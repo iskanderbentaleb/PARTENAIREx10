@@ -4,7 +4,13 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import AppLayout from "@/layouts/app-layout";
 import { Head, Link, useForm, router } from "@inertiajs/react";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+} from "@/components/ui/card";
 import { Loader2, Plus, Trash, ArrowLeft, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 import { useState, useEffect } from "react";
@@ -14,6 +20,11 @@ type BreadcrumbItem = {
   title: string;
   href: string;
 };
+
+const breadcrumbs: BreadcrumbItem[] = [
+  { title: "Purchases", href: "/purchases" },
+  { title: "Create", href: "/purchases/create" },
+];
 
 interface Supplier {
   id: number;
@@ -26,70 +37,38 @@ interface Investor {
   current_balance: number;
 }
 
-interface PurchaseItem {
-  id?: number;
+interface Item {
   product_name: string;
   barcode_prinsipal: string;
   quantity: number;
   unit_price: number;
   subtotal: number;
   sale_price: number;
-  quantity_selled?: number;
-}
-
-interface Purchase {
-  id: number;
-  supplier_id: string;
-  investor_id: string;
-  supplier_invoice_number: string;
-  purchase_date: string;
-  due_date: string;
-  subtotal: number;
-  discount_value: number;
-  discount_reason: string;
-  shipping_value: number;
-  shipping_note: string;
-  total: number;
-  currency: string;
-  note: string;
-  invoice_image: string | null;
-  items: PurchaseItem[];
 }
 
 interface Props {
-  purchase: Purchase;
   suppliers: Supplier[];
   investors: Investor[];
-  amount_paid: number;
 }
 
-export default function PurchasesEditPage({ purchase, suppliers, investors, amount_paid }: Props) {
-  const { data, setData, post, processing, errors } = useForm({
-    supplier_id: purchase.supplier_id || "",
-    investor_id: purchase.investor_id || "",
-    supplier_invoice_number: purchase.supplier_invoice_number || "",
-    purchase_date: purchase?.purchase_date ? purchase.purchase_date.split("T")[0] : new Date().toISOString().split("T")[0],
-    due_date: purchase.due_date || "",
-    subtotal: purchase.subtotal || 0,
-    discount_reason: purchase.discount_reason || "",
-    discount_value: purchase.discount_value || 0,
-    shipping_note: purchase.shipping_note || "",
-    shipping_value: purchase.shipping_value || 0,
-    total: purchase.total || 0,
-    amount_paid: amount_paid || 0,
-    currency: purchase.currency || "DZD",
-    note: purchase.note || "",
+export default function PurchasesCreatePage({ suppliers, investors }: Props) {
+  const { data, setData, post, processing } = useForm({
+    supplier_id: "",
+    investor_id: "",
+    supplier_invoice_number: "",
+    purchase_date: new Date().toISOString().split("T")[0],
+    due_date: "",
+    subtotal: 0,
+    discount_reason: "",
+    discount_value: 0,
+    shipping_note: "",
+    shipping_value: 0,
+    total: 0,
+    amount_paid: 0, // Added to form data
+    currency: "DZD",
+    note: "",
     invoice_image: null as File | null,
-    items: purchase.items.length > 0 ? purchase.items.map(item => ({
-      id: item.id,
-      product_name: item.product_name || "",
-      barcode_prinsipal: item.barcode_prinsipal || "",
-      quantity: item.quantity || 1,
-      unit_price: item.unit_price || 0,
-      subtotal: item.subtotal || 0,
-      sale_price: item.sale_price || 0,
-      quantity_selled: item.quantity_selled || 0,
-    })) : [
+    items: [
       {
         product_name: "",
         barcode_prinsipal: "",
@@ -97,23 +76,17 @@ export default function PurchasesEditPage({ purchase, suppliers, investors, amou
         unit_price: 0,
         subtotal: 0,
         sale_price: 0,
-      } as PurchaseItem,
+      } as Item,
     ],
   });
 
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
 
-  // Calculate amount remaining
+  // Calculate amount remaining using form data
   const amountRemaining = data.total - data.amount_paid;
 
   // Get selected investor
   const selectedInvestor = investors.find(inv => inv.id === parseInt(data.investor_id));
-
-  // Debug: Check items data
-  useEffect(() => {
-    console.log('Purchase items from backend:', purchase.items);
-    console.log('Form items with IDs:', data.items);
-  }, [purchase.items, data.items]);
 
   // auto-calc due_date (30 days) when purchase_date changes and due_date empty
   useEffect(() => {
@@ -128,7 +101,7 @@ export default function PurchasesEditPage({ purchase, suppliers, investors, amou
   // Recalculate subtotal & total when items / discount change
   useEffect(() => {
     const newSubtotal = (data.items || []).reduce(
-      (sum: number, item: PurchaseItem) => sum + Number(item.subtotal || 0),
+      (sum: number, item: Item) => sum + Number(item.subtotal || 0),
       0
     );
     const discount = Number(data.discount_value || 0);
@@ -158,17 +131,18 @@ export default function PurchasesEditPage({ purchase, suppliers, investors, amou
 
     if (Number(data.discount_value) < 0) errors.discount_value = "Discount value cannot be negative";
     if (Number(data.shipping_value) < 0) errors.shipping_value = "Shipping value cannot be negative";
+
+    // Add validation for amount_paid
     if (Number(data.amount_paid) < 0) errors.amount_paid = "Amount paid cannot be negative";
     if (Number(data.amount_paid) > Number(data.total)) errors.amount_paid = "Amount paid cannot exceed total amount";
 
+    // Check if investor has sufficient balance (calculated from purchases)
+    // if (selectedInvestor && data.total > selectedInvestor.current_balance) {
+    //   errors.investor_id = `Investor has insufficient balance. Available: ${selectedInvestor.current_balance.toFixed(2)} DZD`;
+    // }
+
     (data.items || []).forEach((item: any, index: number) => {
       if (!item.product_name) errors[`items.${index}.product_name`] = "Product name is required";
-
-      // Check if quantity is less than sold quantity
-      if (item.id && item.quantity_selled > 0 && Number(item.quantity) < item.quantity_selled) {
-        errors[`items.${index}.quantity`] = `Cannot set quantity less than sold quantity (Sold: ${item.quantity_selled})`;
-      }
-
       if (Number(item.quantity) <= 0) errors[`items.${index}.quantity`] = "Quantity must be greater than 0";
       if (Number(item.unit_price) < 0) errors[`items.${index}.unit_price`] = "Unit price cannot be negative";
       if (Number(item.sale_price) < 0) errors[`items.${index}.sale_price`] = "Sale price cannot be negative";
@@ -189,36 +163,31 @@ export default function PurchasesEditPage({ purchase, suppliers, investors, amou
         return;
     }
 
-    // Debug: Check what items are being sent
-    console.log('Items being sent to backend:', data.items);
-
     // Create FormData to handle file uploads
     const formData = new FormData();
 
     // Append all form data to FormData
     Object.keys(data).forEach(key => {
         if (key === 'items') {
-          console.log('Items JSON being sent:', JSON.stringify(data[key]));
-          formData.append(key, JSON.stringify(data[key]));
+        formData.append(key, JSON.stringify(data[key]));
         } else if (key === 'invoice_image' && data[key]) {
-          formData.append(key, data[key] as File);
+        formData.append(key, data[key] as File);
         } else if (data[key] !== null && data[key] !== undefined) {
-          formData.append(key, data[key] as string);
+        formData.append(key, data[key] as string);
         }
     });
 
     // Use the correct approach for form submission
-    post(route('purchases.update', purchase.id), formData, {
+    post(route('purchases.store'), formData, {
         forceFormData: true,
         onSuccess: () => {
-          toast.success("Purchase updated successfully!");
+        toast.success("Purchase created successfully!");
         },
         onError: (errors) => {
-          toast.error("Failed to update purchase. Please check the errors below.");
-          if (errors) {
-              // Combine frontend and backend errors
-              setValidationErrors({ ...validationErrors, ...errors });
-          }
+        toast.error("Failed to create purchase.");
+        if (errors) {
+            setValidationErrors(errors);
+        }
         },
     });
   };
@@ -253,11 +222,8 @@ export default function PurchasesEditPage({ purchase, suppliers, investors, amou
     setValidationErrors(newErrors);
   };
 
-  const updateItem = (index: number, key: keyof PurchaseItem, value: any) => {
+  const updateItem = (index: number, key: keyof Item, value: any) => {
     const updated = [...data.items];
-
-    // Preserve the existing ID if it exists
-    const existingId = updated[index].id;
 
     // convert numeric inputs
     if (key === "quantity") updated[index][key] = parseInt(value as any) || 0;
@@ -269,11 +235,6 @@ export default function PurchasesEditPage({ purchase, suppliers, investors, amou
     const qty = Number(updated[index].quantity) || 0;
     const price = Number(updated[index].unit_price) || 0;
     updated[index].subtotal = parseFloat((qty * price).toFixed(2));
-
-    // Ensure the ID is preserved
-    if (existingId) {
-      updated[index].id = existingId;
-    }
 
     setData("items", updated);
 
@@ -296,11 +257,6 @@ export default function PurchasesEditPage({ purchase, suppliers, investors, amou
     }
   };
 
-  const breadcrumbs: BreadcrumbItem[] = [
-    { title: "Purchases", href: "/purchases" },
-    { title: "Edit", href: `/purchases/${purchase.id}/edit` },
-  ];
-
   return (
     <AppLayout
       breadcrumbs={breadcrumbs}
@@ -313,25 +269,26 @@ export default function PurchasesEditPage({ purchase, suppliers, investors, amou
         </Button>
       }
     >
-      <Head title="Edit Purchase" />
+      <Head title="Create Purchase" />
 
       <div className="py-6 px-4 md:px-8">
+        {/* Page header */}
         <div className="mb-8 flex flex-col gap-2">
-          <h1 className="text-3xl font-bold tracking-tight">Edit Purchase #{purchase.id}</h1>
+          <h1 className="text-3xl font-bold tracking-tight">Create New Purchase</h1>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-10">
-          {/* Purchase Information Section */}
+          {/* Purchase Info */}
           <Card>
             <CardHeader>
               <CardTitle className="text-xl">Purchase Information</CardTitle>
-              <CardDescription>Update the details for this purchase</CardDescription>
+              <CardDescription>Fill in the details for your new purchase</CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                 {/* Supplier */}
                 <div className="space-y-2">
-                  <Label htmlFor="supplier_id" className={cn((validationErrors.supplier_id || errors.supplier_id) && "text-destructive")}>
+                  <Label htmlFor="supplier_id" className={cn(validationErrors.supplier_id && "text-destructive")}>
                     Supplier *
                   </Label>
                   <select
@@ -340,7 +297,7 @@ export default function PurchasesEditPage({ purchase, suppliers, investors, amou
                     onChange={(e) => handleFieldChange("supplier_id", e.target.value)}
                     className={cn(
                       "flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm",
-                      (validationErrors.supplier_id || errors.supplier_id) && "border-destructive"
+                      validationErrors.supplier_id && "border-destructive"
                     )}
                   >
                     <option value="">Select Supplier</option>
@@ -350,17 +307,17 @@ export default function PurchasesEditPage({ purchase, suppliers, investors, amou
                       </option>
                     ))}
                   </select>
-                  {(validationErrors.supplier_id || errors.supplier_id) && (
+                  {validationErrors.supplier_id && (
                     <p className="text-sm text-destructive flex items-center gap-1">
                       <AlertCircle className="h-3 w-3" />
-                      {validationErrors.supplier_id || errors.supplier_id}
+                      {validationErrors.supplier_id}
                     </p>
                   )}
                 </div>
 
                 {/* Investor */}
                 <div className="space-y-2">
-                  <Label htmlFor="investor_id" className={cn((validationErrors.investor_id || errors.investor_id) && "text-destructive")}>
+                  <Label htmlFor="investor_id" className={cn(validationErrors.investor_id && "text-destructive")}>
                     Investor *
                   </Label>
                   <select
@@ -369,7 +326,7 @@ export default function PurchasesEditPage({ purchase, suppliers, investors, amou
                     onChange={(e) => handleFieldChange("investor_id", e.target.value)}
                     className={cn(
                       "flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm",
-                      (validationErrors.investor_id || errors.investor_id) && "border-destructive"
+                      validationErrors.investor_id && "border-destructive"
                     )}
                   >
                     <option value="">Select Investor</option>
@@ -379,10 +336,10 @@ export default function PurchasesEditPage({ purchase, suppliers, investors, amou
                       </option>
                     ))}
                   </select>
-                  {(validationErrors.investor_id || errors.investor_id) && (
+                  {validationErrors.investor_id && (
                     <p className="text-sm text-destructive flex items-center gap-1">
                       <AlertCircle className="h-3 w-3" />
-                      {validationErrors.investor_id || errors.investor_id}
+                      {validationErrors.investor_id}
                     </p>
                   )}
                 </div>
@@ -400,7 +357,7 @@ export default function PurchasesEditPage({ purchase, suppliers, investors, amou
 
                 {/* Purchase Date */}
                 <div className="space-y-2">
-                  <Label htmlFor="purchase_date" className={cn((validationErrors.purchase_date || errors.purchase_date) && "text-destructive")}>
+                  <Label htmlFor="purchase_date" className={cn(validationErrors.purchase_date && "text-destructive")}>
                     Purchase Date *
                   </Label>
                   <Input
@@ -408,12 +365,12 @@ export default function PurchasesEditPage({ purchase, suppliers, investors, amou
                     type="date"
                     value={data.purchase_date}
                     onChange={(e) => handleFieldChange("purchase_date", e.target.value)}
-                    className={(validationErrors.purchase_date || errors.purchase_date) ? "border-destructive" : ""}
+                    className={validationErrors.purchase_date && "border-destructive"}
                   />
-                  {(validationErrors.purchase_date || errors.purchase_date) && (
+                  {validationErrors.purchase_date && (
                     <p className="text-sm text-destructive flex items-center gap-1">
                       <AlertCircle className="h-3 w-3" />
-                      {validationErrors.purchase_date || errors.purchase_date}
+                      {validationErrors.purchase_date}
                     </p>
                   )}
                 </div>
@@ -421,7 +378,7 @@ export default function PurchasesEditPage({ purchase, suppliers, investors, amou
             </CardContent>
           </Card>
 
-          {/* Items Section */}
+          {/* Items */}
           <Card>
             <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle className="text-xl">Purchase Items</CardTitle>
@@ -433,37 +390,32 @@ export default function PurchasesEditPage({ purchase, suppliers, investors, amou
             <CardContent className="space-y-4">
               {data.items.map((item: any, index: number) => (
                 <div key={index} className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end p-4 rounded-lg border">
-                  {/* Hidden ID field for debugging */}
-                  {item.id && (
-                    <input type="hidden" value={item.id} />
-                  )}
-
                   {/* Product */}
                   <div className="space-y-2 md:col-span-2">
-                    <Label className={cn((validationErrors[`items.${index}.product_name`] || errors[`items.${index}.product_name`]) && "text-destructive")}>
+                    <Label className={cn(validationErrors[`items.${index}.product_name`] && "text-destructive")}>
                       Product *
                     </Label>
                     <Input
-                      className={cn("w-full", (validationErrors[`items.${index}.product_name`] || errors[`items.${index}.product_name`]) && "border-destructive")}
+                      className={cn("w-full", validationErrors[`items.${index}.product_name`] && "border-destructive")}
                       value={item.product_name}
                       onChange={(e) => updateItem(index, "product_name", e.target.value)}
                       placeholder="Product name"
                     />
-                    {(validationErrors[`items.${index}.product_name`] || errors[`items.${index}.product_name`]) && (
+                    {validationErrors[`items.${index}.product_name`] && (
                       <p className="text-sm text-destructive flex items-center gap-1">
                         <AlertCircle className="h-3 w-3" />
-                        {validationErrors[`items.${index}.product_name`] || errors[`items.${index}.product_name`]}
+                        {validationErrors[`items.${index}.product_name`]}
                       </p>
                     )}
                   </div>
 
                   {/* Barcode */}
                   <div className="space-y-2 md:col-span-1">
-                    <Label className={cn((validationErrors[`items.${index}.barcode_prinsipal`] || errors[`items.${index}.barcode_prinsipal`]) && "text-destructive")}>
+                    <Label className={cn(validationErrors[`items.${index}.barcode_prinsipal`] && "text-destructive")}>
                       Barcode / Ref
                     </Label>
                     <Input
-                      className={cn("w-full", (validationErrors[`items.${index}.barcode_prinsipal`] || errors[`items.${index}.barcode_prinsipal`]) && "border-destructive")}
+                      className={cn("w-full", validationErrors[`items.${index}.barcode_prinsipal`] && "border-destructive")}
                       value={item.barcode_prinsipal}
                       onChange={(e) => updateItem(index, "barcode_prinsipal", e.target.value)}
                       placeholder="barcode or ref"
@@ -472,63 +424,56 @@ export default function PurchasesEditPage({ purchase, suppliers, investors, amou
 
                   {/* Quantity */}
                   <div className="space-y-2 md:col-span-1">
-                    <Label className={cn((validationErrors[`items.${index}.quantity`] || errors[`items.${index}.quantity`]) && "text-destructive")}>
-                      Qty *
-                      {item.quantity_selled > 0 && (
-                        <span className="text-xs text-amber-600 ml-1">
-                          (Sold: {item.quantity_selled})
-                        </span>
-                      )}
-                    </Label>
+                    <Label className={cn(validationErrors[`items.${index}.quantity`] && "text-destructive")}>Qty *</Label>
                     <Input
                       type="number"
-                      min={item.quantity_selled || 1}
-                      className={cn("w-full", (validationErrors[`items.${index}.quantity`] || errors[`items.${index}.quantity`]) && "border-destructive")}
+                      min="1"
+                      className={cn("w-full", validationErrors[`items.${index}.quantity`] && "border-destructive")}
                       value={item.quantity}
                       onChange={(e) => updateItem(index, "quantity", e.target.value)}
                     />
-                    {(validationErrors[`items.${index}.quantity`] || errors[`items.${index}.quantity`]) && (
+                    {validationErrors[`items.${index}.quantity`] && (
                       <p className="text-sm text-destructive flex items-center gap-1">
                         <AlertCircle className="h-3 w-3" />
-                        {validationErrors[`items.${index}.quantity`] || errors[`items.${index}.quantity`]}
+                        {validationErrors[`items.${index}.quantity`]}
                       </p>
                     )}
                   </div>
 
                   {/* Purchase Price */}
                   <div className="space-y-2 md:col-span-2">
-                    <Label className={cn((validationErrors[`items.${index}.unit_price`] || errors[`items.${index}.unit_price`]) && "text-destructive")}>Purchase Price *</Label>
+                    <Label className={cn(validationErrors[`items.${index}.unit_price`] && "text-destructive")}>Purchase Price *</Label>
                     <Input
                       type="number"
                       min="0"
                       step="0.01"
-                      className={cn("w-full", (validationErrors[`items.${index}.unit_price`] || errors[`items.${index}.unit_price`]) && "border-destructive")}
+                      className={cn("w-full", validationErrors[`items.${index}.unit_price`] && "border-destructive")}
                       value={item.unit_price}
                       onChange={(e) => updateItem(index, "unit_price", e.target.value)}
                     />
-                    {(validationErrors[`items.${index}.unit_price`] || errors[`items.${index}.unit_price`]) && (
+                    {validationErrors[`items.${index}.unit_price`] && (
                       <p className="text-sm text-destructive flex items-center gap-1">
                         <AlertCircle className="h-3 w-3" />
-                        {validationErrors[`items.${index}.unit_price`] || errors[`items.${index}.unit_price`]}
+                        {validationErrors[`items.${index}.unit_price`]}
                       </p>
                     )}
                   </div>
 
                   {/* Sale Price */}
                   <div className="space-y-2 md:col-span-2">
-                    <Label className={cn((validationErrors[`items.${index}.sale_price`] || errors[`items.${index}.sale_price`]) && "text-destructive")}>Sale Price *</Label>
+                    <Label className={cn(validationErrors[`items.${index}.sale_price`] && "text-destructive")}>Sale Price *</Label>
                     <Input
                       type="number"
                       min="0"
                       step="0.01"
-                      className={cn("w-full", (validationErrors[`items.${index}.sale_price`] || errors[`items.${index}.sale_price`]) && "border-destructive")}
+                      className={cn("w-full", validationErrors[`items.${index}.sale_price`] && "border-destructive")}
                       value={item.sale_price}
                       onChange={(e) => updateItem(index, "sale_price", e.target.value)}
                     />
-                    {(validationErrors[`items.${index}.sale_price`] || errors[`items.${index}.sale_price`]) && (
+                    {validationErrors[`items.${index}.sale_price`] && (
                       <p className="text-sm text-destructive flex items-center gap-1">
                         <AlertCircle className="h-3 w-3" />
-                        {validationErrors[`items.${index}.sale_price`] || errors[`items.${index}.sale_price`]}
+                        {validationErrors[`items.${index}.sale_price`]}
                       </p>
                     )}
                   </div>
@@ -544,22 +489,20 @@ export default function PurchasesEditPage({ purchase, suppliers, investors, amou
                     />
                   </div>
 
-                    {item.quantity_selled < 1 && (
-                        <div className="flex md:col-span-1">
-                            <Button
-                            type="button"
-                            variant="destructive"
-                            size="icon"
-                            className="h-9 w-9 rounded-2 transition-all duration-200 hover:scale-105 hover:shadow-md"
-                            onClick={() => removeItem(index)}
-                            disabled={data.items.length <= 1}
-                            aria-label="Remove item"
-                            >
-                            <Trash className="h-4 w-4" />
-                            </Button>
-                        </div>
-                    )}
-
+                  {/* Delete Button */}
+                  <div className="flex md:col-span-1">
+                    <Button
+                      type="button"
+                      variant="destructive"
+                      size="icon"
+                      className="h-9 w-9 rounded-2 transition-all duration-200 hover:scale-105 hover:shadow-md"
+                      onClick={() => removeItem(index)}
+                      disabled={data.items.length <= 1}
+                      aria-label="Remove item"
+                    >
+                      <Trash className="h-4 w-4" />
+                    </Button>
+                  </div>
                 </div>
               ))}
             </CardContent>
@@ -588,16 +531,27 @@ export default function PurchasesEditPage({ purchase, suppliers, investors, amou
                   {/* Discount Reason + Value */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-2">
-                      <Label htmlFor="discount_reason">Discount Reason</Label>
+                      <Label htmlFor="discount_reason" className={cn(validationErrors.discount_reason && "text-destructive")}>
+                        Discount Reason
+                      </Label>
                       <Input
                         id="discount_reason"
                         value={data.discount_reason}
                         onChange={(e) => handleFieldChange("discount_reason", e.target.value)}
                         placeholder="Reason for discount"
+                        className={validationErrors.discount_reason && "border-destructive"}
                       />
+                      {validationErrors.discount_reason && (
+                        <p className="text-sm text-destructive flex items-center gap-1">
+                          <AlertCircle className="h-3 w-3" />
+                          {validationErrors.discount_reason}
+                        </p>
+                      )}
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="discount_value">Discount Value</Label>
+                      <Label htmlFor="discount_value" className={cn(validationErrors.discount_value && "text-destructive")}>
+                        Discount Value
+                      </Label>
                       <Input
                         id="discount_value"
                         type="number"
@@ -605,7 +559,14 @@ export default function PurchasesEditPage({ purchase, suppliers, investors, amou
                         step="0.01"
                         value={Number(data.discount_value || 0)}
                         onChange={(e) => handleFieldChange("discount_value", parseFloat(e.target.value || "0"))}
+                        className={validationErrors.discount_value && "border-destructive"}
                       />
+                      {validationErrors.discount_value && (
+                        <p className="text-sm text-destructive flex items-center gap-1">
+                          <AlertCircle className="h-3 w-3" />
+                          {validationErrors.discount_value}
+                        </p>
+                      )}
                     </div>
                   </div>
 
@@ -659,7 +620,7 @@ export default function PurchasesEditPage({ purchase, suppliers, investors, amou
 
                   {/* Amount Paid */}
                   <div className="space-y-2">
-                    <Label htmlFor="amount_paid" className={cn((validationErrors.amount_paid || errors.amount_paid) && "text-destructive")}>
+                    <Label htmlFor="amount_paid" className={cn(validationErrors.amount_paid && "text-destructive")}>
                       Amount Paid
                     </Label>
                     <Input
@@ -674,12 +635,12 @@ export default function PurchasesEditPage({ purchase, suppliers, investors, amou
                         handleFieldChange("amount_paid", paid);
                       }}
                       placeholder="Enter amount paid"
-                      className={(validationErrors.amount_paid || errors.amount_paid) ? "border-destructive" : ""}
+                      className={validationErrors.amount_paid && "border-destructive"}
                     />
-                    {(validationErrors.amount_paid || errors.amount_paid) && (
+                    {validationErrors.amount_paid && (
                       <p className="text-sm text-destructive flex items-center gap-1">
                         <AlertCircle className="h-3 w-3" />
-                        {validationErrors.amount_paid || errors.amount_paid}
+                        {validationErrors.amount_paid}
                       </p>
                     )}
                   </div>
@@ -707,9 +668,7 @@ export default function PurchasesEditPage({ purchase, suppliers, investors, amou
           <Card>
             <CardHeader>
               <CardTitle className="text-xl">Invoice File</CardTitle>
-              <CardDescription>
-                {purchase.invoice_image ? "Current file: " + purchase.invoice_image : "Upload new invoice (PDF, JPG, PNG, XLSX)"}
-              </CardDescription>
+              <CardDescription>Upload invoice (PDF, JPG, PNG, XLSX)</CardDescription>
             </CardHeader>
             <CardContent>
               <Input
@@ -723,7 +682,7 @@ export default function PurchasesEditPage({ purchase, suppliers, investors, amou
                   }
                 }}
               />
-              {data.invoice_image && <p className="text-sm mt-2">New file: {data.invoice_image.name}</p>}
+              {data.invoice_image && <p className="text-sm mt-2">Selected: {data.invoice_image.name}</p>}
             </CardContent>
           </Card>
 
@@ -753,10 +712,10 @@ export default function PurchasesEditPage({ purchase, suppliers, investors, amou
               {processing ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Updating...
+                  Saving...
                 </>
               ) : (
-                "Update Purchase"
+                "Create Purchase"
               )}
             </Button>
           </div>

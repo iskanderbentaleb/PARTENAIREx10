@@ -17,6 +17,7 @@ class SupplierTransactionController extends Controller
     public function index(Request $request)
     {
         $query = SupplierTransaction::where('user_id', Auth::id())
+            ->where('amount', '>', 0 )
             ->with(['supplier', 'purchase']); // eager load relations
 
         if ($request->filled('search')) {
@@ -35,7 +36,7 @@ class SupplierTransactionController extends Controller
         }
 
         // Paginate results (50 per page)
-        $transactions = $query->latest('date')->paginate(50);
+        $transactions = $query->latest()->paginate(50);
 
         return Inertia::render('supplier_transactions/index', [
             'transactions'    => $transactions, // full paginator

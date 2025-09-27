@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\InvestorController;
 use App\Http\Controllers\PurchaseController;
+use App\Http\Controllers\SaleController;
 use App\Http\Controllers\SupplierController;
 use App\Http\Controllers\SupplierTransactionController;
 use App\Models\SupplierTransaction;
@@ -26,7 +27,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::post('suppliers', [SupplierController::class, 'store'])->name('suppliers.store');
     Route::get('suppliers/edit/{id}', [SupplierController::class, 'edit'])->name('suppliers.edit');
     Route::put('suppliers/{id}', action: [SupplierController::class, 'update'])->name('suppliers.update');
-
+    Route::get('suppliers/{supplier}/financial-data', [SupplierController::class, 'financialData']);
 
     // investors routes
     Route::get('investors', [InvestorController::class, 'index'])->name('investors');
@@ -55,6 +56,18 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('supplier_transactions/edit/{id}', [SupplierTransactionController::class, 'edit'])->name('supplier_transactions.edit');
     Route::put('supplier_transactions/{id}', action: [SupplierTransactionController::class, 'update'])->name('supplier_transactions.update');
     Route::delete('supplier_transactions/delete/{id}', [SupplierTransactionController::class, 'destroy'])->name('supplier_transactions.destroy');
+
+
+
+    // purchases routes
+    Route::get('sales', [SaleController::class, 'index'])->name('sales');
+    // Route::get('purchases/view/{id}', [PurchaseController::class, 'show'])->name('purchases.show'); // Add this line
+    // Route::get('purchases/download-invoice/{purchase}', [PurchaseController::class, 'downloadInvoice'])->name('purchases.download-invoice');
+    // Route::delete('purchases/delete/{id}', [PurchaseController::class, 'destroy'])->name('purchases.destroy');
+    // Route::get('purchases/create', [PurchaseController::class, 'create'])->name('purchases.create');
+    // Route::post('purchases', [PurchaseController::class, 'store'])->name('purchases.store');
+    // Route::get('purchases/edit/{id}', [PurchaseController::class, 'edit'])->name('purchases.edit');
+    // Route::post('purchases/update/{id}', [PurchaseController::class, 'update'])->name('purchases.update');
 
 
 

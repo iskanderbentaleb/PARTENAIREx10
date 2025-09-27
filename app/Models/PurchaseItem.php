@@ -47,6 +47,12 @@ class PurchaseItem extends Model
         return 0;
     }
 
+    public function saleItems()
+    {
+        return $this->hasMany(SaleItem::class);
+    }
+
+
 
 
 }

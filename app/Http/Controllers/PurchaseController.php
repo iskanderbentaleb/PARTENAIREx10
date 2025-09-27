@@ -309,6 +309,7 @@ class PurchaseController extends Controller
 
 
 
+
     /**
      * Update the specified purchase in storage.
      */
@@ -328,11 +329,12 @@ class PurchaseController extends Controller
             'shipping_value'            => 'required|numeric|min:0',
             'shipping_note'             => 'nullable|string|max:255',
             'total'                     => 'required|numeric|min:0',
-            'amount_paid'               => 'required|numeric|min:0', // Add amount_paid validation
+            'amount_paid'               => 'required|numeric|min:0',
             'currency'                  => 'nullable|string|size:3',
             'note'                      => 'nullable|string',
             'invoice_image'             => 'nullable|file|mimes:pdf,jpg,jpeg,png,gif,xlsx,xls|max:5120',
             'items'                     => 'required|array|min:1',
+            'items.*.id'                => 'nullable|exists:purchase_items,id',
             'items.*.product_name'      => 'required|string|max:255',
             'items.*.barcode_prinsipal' => 'nullable|string|max:255',
             'items.*.quantity'          => 'required|integer|min:1',
@@ -345,8 +347,8 @@ class PurchaseController extends Controller
         if ($validated['amount_paid'] > $validated['total']) {
             return redirect()
                 ->back()
-                ->withInput()
-                ->with('error', 'Amount paid cannot exceed total amount');
+                ->withErrors(['amount_paid' => 'Amount paid cannot exceed total amount'])
+                ->withInput();
         }
 
         // Process items from JSON if needed
@@ -355,14 +357,16 @@ class PurchaseController extends Controller
         }
 
         // Validate that updated quantities are not less than sold quantities
-        foreach ($validated['items'] as $itemData) {
-            if (isset($itemData['id'])) {
+        foreach ($validated['items'] as $index => $itemData) {
+            if (isset($itemData['id']) && !empty($itemData['id'])) {
                 $existingItem = PurchaseItem::find($itemData['id']);
                 if ($existingItem && $itemData['quantity'] < $existingItem->quantity_selled) {
                     return redirect()
                         ->back()
-                        ->withInput()
-                        ->with('error', 'Cannot set quantity less than sold quantity for product: ' . $existingItem->product_name);
+                        ->withErrors([
+                            "items.{$index}.quantity" => 'Cannot set quantity less than sold quantity for product: ' . $existingItem->product_name . ' (Sold: ' . $existingItem->quantity_selled . ')'
+                        ])
+                        ->withInput();
                 }
             }
         }
@@ -417,7 +421,7 @@ class PurchaseController extends Controller
             $updatedItemIds = [];
 
             foreach ($validated['items'] as $itemData) {
-                if (isset($itemData['id']) && in_array($itemData['id'], $existingItemIds)) {
+                if (isset($itemData['id']) && !empty($itemData['id']) && in_array($itemData['id'], $existingItemIds)) {
                     // Update existing item
                     $item = PurchaseItem::find($itemData['id']);
                     $item->update($itemData);
@@ -427,7 +431,7 @@ class PurchaseController extends Controller
                     $newItem = $purchase->items()->create($itemData);
 
                     // Generate barcode for new item
-                    $barcode = strtoupper(dechex($newItem->id)) . $newItem->barcode_prinsipal;
+                    $barcode = strtoupper(dechex($newItem->id)) . ($newItem->barcode_prinsipal ?? '');
                     $newItem->update([
                         'barcode_generated' => $barcode,
                     ]);

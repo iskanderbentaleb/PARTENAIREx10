@@ -30,8 +30,8 @@ const mainNavItems: NavItem[] = [
         icon: Package,
     },
     {
-        title: 'Adjustments',
-        href: '/adjustments',
+        title: 'sales',
+        href: '/sales',
         icon: ArrowLeftRight,
     },
     {

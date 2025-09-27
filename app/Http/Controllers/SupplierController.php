@@ -14,29 +14,43 @@ class SupplierController extends Controller
      */
     public function index(Request $request)
     {
-        $query = Supplier::where('user_id', Auth::id());
+        $query = Supplier::where('user_id', Auth::id())
+            ->withSum('purchases', 'total')           // supplier purchase total
+            ->withSum('transactions', 'amount');      // supplier payments total
 
         if ($request->filled('search')) {
             $searchTerm = '%' . $request->search . '%';
             $query->where(function ($q) use ($searchTerm) {
                 $q->where('name', 'like', $searchTerm)
-                ->orWhere('email', 'like', $searchTerm)
-                ->orWhere('phone', 'like', $searchTerm)
-                ->orWhere('address', 'like', $searchTerm)
-                ->orWhere('notes', 'like', $searchTerm);
+                    ->orWhere('email', 'like', $searchTerm)
+                    ->orWhere('phone', 'like', $searchTerm)
+                    ->orWhere('address', 'like', $searchTerm)
+                    ->orWhere('notes', 'like', $searchTerm);
             });
         }
 
-        // Keep pagination at 30
         $suppliers = $query->latest("name")->paginate(50);
 
+        // Append debts to each supplier
+        $suppliers->getCollection()->transform(function ($supplier) {
+            $supplier->total_debt = ($supplier->purchases_sum_total ?? 0) - ($supplier->transactions_sum_amount ?? 0);
+            return $supplier;
+        });
+
+        // Dashboard totals (grand totals across all suppliers)
+        $totals = [
+            'purchases' => $suppliers->getCollection()->sum('purchases_sum_total'),
+            'payments'  => $suppliers->getCollection()->sum('transactions_sum_amount'),
+            'debts'     => $suppliers->getCollection()->sum('total_debt'),
+        ];
+
         return Inertia::render('suppliers/index', [
-            'suppliers'       => $suppliers, // pass paginator, not items()
+            'suppliers'       => $suppliers,
             'paginationLinks' => $suppliers->linkCollection(),
             'search'          => $request->search,
+            'totals'          => $totals,
         ]);
     }
-
     /**
      * Show the form to create a new supplier.
      */
@@ -118,5 +132,27 @@ class SupplierController extends Controller
     private function authorizeSupplier(Supplier $supplier)
     {
         abort_unless($supplier->user_id === Auth::id(), 403, 'Unauthorized access');
+    }
+
+
+    public function financialData(Supplier $supplier)
+    {
+        $userId = auth()->id();
+
+        $totalPurchases = $supplier->purchases()
+            ->where('user_id', $userId)
+            ->sum('total');
+
+        $totalPayments = $supplier->transactions()
+            ->where('user_id', $userId)
+            ->sum('amount');
+
+        $totalDebts = $totalPurchases - $totalPayments;
+
+        return response()->json([
+            'total_purchases' => $totalPurchases,
+            'total_payments'  => $totalPayments,
+            'total_debts'     => $totalDebts,
+        ]);
     }
 }

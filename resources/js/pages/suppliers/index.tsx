@@ -22,7 +22,7 @@ const breadcrumbs: BreadcrumbItem[] = [
   { title: 'Suppliers', href: '/suppliers' },
 ];
 
-// Supplier type (based on Laravel model)
+// Supplier type
 type Supplier = {
   id: number;
   name: string;
@@ -30,17 +30,77 @@ type Supplier = {
   phone: string;
   address: string;
   notes: string;
+  purchases_sum_total?: number;
+  transactions_sum_amount?: number;
+  total_debt?: number;
 };
 
-export default function SuppliersPage({ suppliers, paginationLinks }: any) {
+export default function SuppliersPage({ suppliers, paginationLinks, totals }: any) {
+
+  function formatMoney(value: number | null | undefined) {
+    const num = value ?? 0;
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: "DZD", // Change if needed
+      minimumFractionDigits: 2,
+    }).format(num);
+  }
+
   const columns: ColumnDef<Supplier>[] = [
     { accessorKey: 'name', header: 'Name' },
-    { accessorKey: 'Debts', header: 'Total Payments' },
-    { accessorKey: 'Debts', header: 'Debts' },
-    // { accessorKey: 'Debts', header: 'Total Versement' },
-    { accessorKey: 'address', header: 'Address' },
-    { accessorKey: 'phone', header: 'Phone' },
+    {
+      accessorKey: "purchases_sum_total",
+      header: "Total Purchase Amount",
+      cell: ({ row }) => (
+        <span className="font-medium text-gray-950 dark:text-gray-200">
+          {formatMoney(row.original.purchases_sum_total)}
+        </span>
+      ),
+    },
+    {
+      accessorKey: "dash",
+      header: "-",
+      cell: () => <span className="text-gray-500 font-bold">-</span>,
+      enableSorting: false,
+    },
+    {
+      accessorKey: "transactions_sum_amount",
+      header: "Total Payments",
+      cell: ({ row }) => (
+        <span className="font-medium text-green-600">
+          {formatMoney(row.original.transactions_sum_amount)}
+        </span>
+      ),
+    },
+    {
+      accessorKey: "equal",
+      header: "=",
+      cell: () => <span className="text-gray-500 font-bold">=</span>,
+      enableSorting: false,
+    },
+    {
+      accessorKey: "total_debt",
+      header: "Total Debt",
+      cell: ({ row }) => {
+        const debt = row.original.total_debt ?? 0;
+
+        let color = "text-green-600"; // default balanced
+        if (debt > 0) {
+          color = "text-red-600"; // owes
+        } else if (debt < 0) {
+          color = "text-orange-500"; // prepaid
+        }
+
+        return (
+          <span className={`font-bold ${color}`}>
+            {formatMoney(debt)}
+          </span>
+        );
+      },
+    },
     { accessorKey: 'email', header: 'Email' },
+    { accessorKey: 'phone', header: 'Phone' },
+    { accessorKey: 'address', header: 'Address' },
     { accessorKey: 'notes', header: 'Notes' },
     {
       accessorKey: 'actions',
@@ -97,12 +157,33 @@ export default function SuppliersPage({ suppliers, paginationLinks }: any) {
       }
     >
       <Head title="Suppliers" />
+
+      {/* Dashboard summary */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-5 p-4">
+        <div className="p-4 rounded-xl shadow bg-gray-100 dark:bg-zinc-900 ">
+          <h4 className="text-sm font-medium text-gray-500">Total Purchases</h4>
+          <p className="text-lg font-bold text-gray-900 dark:text-gray-200">{formatMoney(totals.purchases)}</p>
+        </div>
+        <div className="p-4 rounded-xl shadow bg-gray-100 dark:bg-zinc-900">
+          <h4 className="text-sm font-medium text-gray-500">Total Payments</h4>
+          <p className="text-lg font-bold text-green-600">{formatMoney(totals.payments)}</p>
+        </div>
+        <div className="p-4 rounded-xl shadow bg-gray-100 dark:bg-zinc-900">
+          <h4 className="text-sm font-medium text-gray-500">Total Debts</h4>
+          <p className={`text-lg font-bold ${
+            totals.debts > 0 ? "text-red-600" : totals.debts < 0 ? "text-orange-500" : "text-green-600"
+          }`}>
+            {formatMoney(totals.debts)}
+          </p>
+        </div>
+      </div>
+
       <div className="flex flex-1 flex-col gap-4 rounded-xl p-4 overflow-x-auto">
         <DataTable
           columns={columns}
           data={suppliers.data}
           paginationLinks={paginationLinks}
-          searchRoute="suppliers" // ✅ Route name from Laravel
+          searchRoute="suppliers"
         />
       </div>
     </AppLayout>
