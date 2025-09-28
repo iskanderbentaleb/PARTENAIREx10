@@ -30,7 +30,7 @@ const mainNavItems: NavItem[] = [
         icon: Package,
     },
     {
-        title: 'sales',
+        title: 'Sales',
         href: '/sales',
         icon: ArrowLeftRight,
     },

@@ -72,12 +72,8 @@ class SaleController extends Controller
         // Get all investors
         $investors = Investor::all();
 
-        // Get purchase items that have available stock (quantity - quantity_selled > 0)
-        $purchaseItems = PurchaseItem::with('purchase')
-            ->select('*')
-            ->selectRaw('(quantity - quantity_selled) as available_quantity')
-            ->having('available_quantity', '>', 0)
-            ->get();
+        // Initially, no purchase items are loaded until investor is selected
+        $purchaseItems = collect([]);
 
         return inertia('sales/create', [
             'investors' => $investors,
@@ -85,6 +81,28 @@ class SaleController extends Controller
         ]);
     }
 
+    /**
+     * Get purchase items for a specific investor
+     */
+    public function getInvestorPurchaseItems($investorId)
+    {
+        $investor = Investor::findOrFail($investorId);
+
+        // Get purchase items that belong to the selected investor and have available stock
+        $purchaseItems = PurchaseItem::with('purchase')
+            ->whereHas('purchase', function ($query) use ($investorId) {
+                $query->where('investor_id', $investorId);
+            })
+            ->select('*')
+            ->selectRaw('(quantity - quantity_selled) as available_quantity')
+            ->having('available_quantity', '>', 0)
+            ->get();
+
+        return response()->json([
+            'purchaseItems' => $purchaseItems,
+            'investor' => $investor
+        ]);
+    }
 
     /**
      * Store a newly created resource in storage.
@@ -92,7 +110,7 @@ class SaleController extends Controller
     public function store(Request $request)
     {
         $request->validate([
-            'invoice_number' => 'required|string|max:255|unique:sales,invoice_number',
+            'invoice_number' => 'nullable|string|max:255|unique:sales,invoice_number',
             'sale_date' => 'required|date',
             'investor_id' => 'required|exists:investors,id',
             'subtotal' => 'required|numeric|min:0',
@@ -106,6 +124,20 @@ class SaleController extends Controller
             'items.*.subtotal' => 'required|numeric|min:0',
         ]);
 
+        // Validate that all purchase items belong to the selected investor
+        $purchaseItemIds = collect($request->items)->pluck('purchase_item_id');
+        $invalidItems = PurchaseItem::whereIn('id', $purchaseItemIds)
+            ->whereHas('purchase', function ($query) use ($request) {
+                $query->where('investor_id', '!=', $request->investor_id);
+            })
+            ->exists();
+
+        if ($invalidItems) {
+            return back()->withErrors([
+                'items' => 'Some selected items do not belong to the chosen investor.'
+            ]);
+        }
+
         // Start database transaction
         return DB::transaction(function () use ($request) {
             // Create the sale
@@ -118,7 +150,7 @@ class SaleController extends Controller
                 'discount_reason' => $request->discount_reason,
                 'discount_value' => $request->discount_value ?? 0,
                 'total' => $request->total,
-                'currency' => 'DZD', // Default currency as per your requirement
+                'currency' => 'DZD',
                 'note' => $request->note,
             ]);
 
@@ -149,6 +181,7 @@ class SaleController extends Controller
                 ->with('success', 'Sale created successfully!');
         });
     }
+
 
     /**
      * Display the specified resource.
