@@ -59,13 +59,16 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
 
 
-    // purchases routes
+    // sales routes
     Route::get('sales', [SaleController::class, 'index'])->name('sales');
+    Route::get('sales/create', [SaleController::class, 'create'])->name('sales.create');
+    Route::post('sales', [SaleController::class, 'store'])->name('sales.store');
+
     // Route::get('purchases/view/{id}', [PurchaseController::class, 'show'])->name('purchases.show'); // Add this line
     // Route::get('purchases/download-invoice/{purchase}', [PurchaseController::class, 'downloadInvoice'])->name('purchases.download-invoice');
     // Route::delete('purchases/delete/{id}', [PurchaseController::class, 'destroy'])->name('purchases.destroy');
-    // Route::get('purchases/create', [PurchaseController::class, 'create'])->name('purchases.create');
-    // Route::post('purchases', [PurchaseController::class, 'store'])->name('purchases.store');
+
+
     // Route::get('purchases/edit/{id}', [PurchaseController::class, 'edit'])->name('purchases.edit');
     // Route::post('purchases/update/{id}', [PurchaseController::class, 'update'])->name('purchases.update');
 
