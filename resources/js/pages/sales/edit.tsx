@@ -4,10 +4,16 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import AppLayout from "@/layouts/app-layout";
 import { Head, Link, useForm, router } from "@inertiajs/react";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Loader2, Plus, Trash, ArrowLeft, AlertCircle } from "lucide-react";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+} from "@/components/ui/card";
+import { Loader2, Plus, Trash, ArrowLeft, AlertCircle, Search, X, Edit } from "lucide-react";
 import { toast } from "sonner";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { cn } from "@/lib/utils";
 
 type BreadcrumbItem = {
@@ -15,333 +21,457 @@ type BreadcrumbItem = {
   href: string;
 };
 
-interface Supplier {
-  id: number;
-  name: string;
-}
-
 interface Investor {
   id: number;
   name: string;
-  current_balance: number;
 }
 
 interface PurchaseItem {
-  id?: number;
+  id: number;
   product_name: string;
   barcode_prinsipal: string;
+  barcode_generated: string;
   quantity: number;
+  quantity_selled: number;
   unit_price: number;
-  subtotal: number;
   sale_price: number;
-  quantity_selled?: number;
+  subtotal: number;
+  sold_percentage: number;
+  available_quantity: number;
+  purchase?: {
+    supplier_id: number;
+  };
 }
 
-interface Purchase {
-  id: number;
-  supplier_id: string;
-  investor_id: string;
-  supplier_invoice_number: string;
-  purchase_date: string;
-  due_date: string;
+interface SaleItemForm {
+  purchase_item_id: number;
+  quantity: number;
+  unit_price: number;
+  sale_price: number;
   subtotal: number;
-  discount_value: number;
+  product_name: string;
+  barcode_generated: string;
+  available_quantity: number;
+}
+
+interface SaleFormData {
+  invoice_number: string;
+  sale_date: string;
+  investor_id: string;
+  subtotal: number;
   discount_reason: string;
-  shipping_value: number;
-  shipping_note: string;
+  discount_value: number;
   total: number;
-  currency: string;
   note: string;
-  invoice_image: string | null;
-  items: PurchaseItem[];
+  items: SaleItemForm[];
+}
+
+interface Sale {
+  id: number;
+  invoice_number: string;
+  sale_date: string;
+  investor_id: number;
+  subtotal: number;
+  discount_reason: string;
+  discount_value: number;
+  total: number;
+  note: string;
+  items: SaleItemForm[];
 }
 
 interface Props {
-  purchase: Purchase;
-  suppliers: Supplier[];
+  sale: Sale;
   investors: Investor[];
-  amount_paid: number;
+  purchaseItems: PurchaseItem[];
+  initialSaleItems: SaleItemForm[];
 }
 
-export default function PurchasesEditPage({ purchase, suppliers, investors, amount_paid }: Props) {
-  const { data, setData, post, processing, errors } = useForm({
-    supplier_id: purchase.supplier_id || "",
-    investor_id: purchase.investor_id || "",
-    supplier_invoice_number: purchase.supplier_invoice_number || "",
-    purchase_date: purchase?.purchase_date ? purchase.purchase_date.split("T")[0] : new Date().toISOString().split("T")[0],
-    due_date: purchase.due_date || "",
-    subtotal: purchase.subtotal || 0,
-    discount_reason: purchase.discount_reason || "",
-    discount_value: purchase.discount_value || 0,
-    shipping_note: purchase.shipping_note || "",
-    shipping_value: purchase.shipping_value || 0,
-    total: purchase.total || 0,
-    amount_paid: amount_paid || 0, // Add amount_paid from controller
-    currency: purchase.currency || "DZD",
-    note: purchase.note || "",
-    invoice_image: null as File | null,
-    items: purchase.items.length > 0 ? purchase.items : [
-      {
-        product_name: "",
-        barcode_prinsipal: "",
-        quantity: 1,
-        unit_price: 0,
-        subtotal: 0,
-        sale_price: 0,
-      } as PurchaseItem,
-    ],
+export default function SalesEditPage({ sale, investors, purchaseItems: initialPurchaseItems, initialSaleItems }: Props) {
+  const { data, setData, put, processing, errors: serverErrors } = useForm<SaleFormData>({
+    invoice_number: sale.invoice_number || "",
+    sale_date: sale.sale_date ? new Date(sale.sale_date).toISOString().split("T")[0] : new Date().toISOString().split("T")[0],
+    investor_id: sale.investor_id?.toString() || "",
+    subtotal: sale.subtotal || 0,
+    discount_reason: sale.discount_reason || "",
+    discount_value: sale.discount_value || 0,
+    total: sale.total || 0,
+    note: sale.note || "",
+    items: initialSaleItems || [],
   });
 
-  const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
+  const [searchTerm, setSearchTerm] = useState("");
+  const [searchResults, setSearchResults] = useState<PurchaseItem[]>([]);
+  const [showSearchResults, setShowSearchResults] = useState(false);
+  const [localErrors, setLocalErrors] = useState<Record<string, string>>({});
+  const [purchaseItems, setPurchaseItems] = useState<PurchaseItem[]>(initialPurchaseItems);
+  const [loadingProducts, setLoadingProducts] = useState(false);
 
-  // Calculate amount remaining
-  const amountRemaining = data.total - data.amount_paid;
+  const breadcrumbs: BreadcrumbItem[] = [
+    { title: "Sales", href: "/sales" },
+    { title: `Edit ${sale.invoice_number || `Sale #${sale.id}`}`, href: `/sales/${sale.id}/edit` },
+  ];
 
-  // Get selected investor
-  const selectedInvestor = investors.find(inv => inv.id === parseInt(data.investor_id));
+  // Combine server and local errors
+  const validationErrors = useMemo(() => ({
+    ...localErrors,
+    ...serverErrors
+  }), [localErrors, serverErrors]);
 
-  // auto-calc due_date (30 days) when purchase_date changes and due_date empty
+  // Memoized available purchase items for selected investor
+  const availablePurchaseItems = useMemo(() =>
+    purchaseItems.filter(item => item.available_quantity > 0),
+    [purchaseItems]
+  );
+
+  // Load products when investor is selected
   useEffect(() => {
-    if (data.purchase_date && !data.due_date) {
-      const purchaseDate = new Date(data.purchase_date);
-      const dueDate = new Date(purchaseDate);
-      dueDate.setDate(dueDate.getDate() + 30);
-      setData("due_date", dueDate.toISOString().split("T")[0]);
-    }
-  }, [data.purchase_date]);
+    const loadInvestorProducts = async () => {
+      if (!data.investor_id) {
+        setPurchaseItems([]);
+        return;
+      }
 
-  // Recalculate subtotal & total when items / discount change
+      setLoadingProducts(true);
+      try {
+        const response = await fetch(`/api/investor/${data.investor_id}/purchase-items`);
+        if (response.ok) {
+          const result = await response.json();
+          setPurchaseItems(result.purchaseItems || []);
+        } else {
+          toast.error("Failed to load investor products");
+          setPurchaseItems([]);
+        }
+      } catch (error) {
+        toast.error("Error loading products");
+        setPurchaseItems([]);
+      } finally {
+        setLoadingProducts(false);
+      }
+    };
+
+    if (data.investor_id) {
+      loadInvestorProducts();
+    }
+  }, [data.investor_id]);
+
+  // Search functionality
   useEffect(() => {
-    const newSubtotal = (data.items || []).reduce(
-      (sum: number, item: PurchaseItem) => sum + Number(item.subtotal || 0),
-      0
-    );
-    const discount = Number(data.discount_value || 0);
-    const newTotal = parseFloat((newSubtotal - discount).toFixed(2));
-
-    // update only if changed to avoid infinite loops
-    if (newSubtotal !== Number(data.subtotal)) {
-      setData("subtotal", newSubtotal);
+    if (searchTerm.trim() === "") {
+      setSearchResults(availablePurchaseItems.slice(0, 5));
+      return;
     }
-    if (newTotal !== Number(data.total)) {
-      setData("total", newTotal);
-    }
-  }, [JSON.stringify(data.items), data.discount_value]);
 
-  const validateForm = () => {
+    const results = availablePurchaseItems.filter(item =>
+      item.barcode_generated?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      item.product_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      item.barcode_prinsipal?.toLowerCase().includes(searchTerm.toLowerCase())
+    ).slice(0, 5);
+
+    setSearchResults(results);
+  }, [searchTerm, availablePurchaseItems]);
+
+  // Close search results when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+      if (!target.closest('.search-container')) {
+        setShowSearchResults(false);
+      }
+    };
+
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
+  }, []);
+
+  // Calculate totals when items or discount change
+  useEffect(() => {
+    const items = Array.isArray(data.items) ? data.items : [];
+
+    const newSubtotal = items.reduce((sum: number, item: SaleItemForm) => {
+      const itemSubtotal = Number(item.subtotal) || 0;
+      return sum + itemSubtotal;
+    }, 0);
+
+    const discount = Number(data.discount_value) || 0;
+    const newTotal = Math.max(0, newSubtotal - discount);
+
+    if (Math.abs(newSubtotal - (Number(data.subtotal) || 0)) > 0.01) {
+      setData("subtotal", parseFloat(newSubtotal.toFixed(2)));
+    }
+
+    if (Math.abs(newTotal - (Number(data.total) || 0)) > 0.01) {
+      setData("total", parseFloat(newTotal.toFixed(2)));
+    }
+  }, [data.items, data.discount_value, data.subtotal, data.total, setData]);
+
+  const validateForm = useCallback((): boolean => {
     const errors: Record<string, string> = {};
 
-    if (!data.supplier_id) errors.supplier_id = "Supplier is required";
-    if (!data.investor_id) errors.investor_id = "Investor is required";
-    if (!data.purchase_date) errors.purchase_date = "Purchase date is required";
-
-    if (data.purchase_date && data.due_date) {
-      const purchaseDate = new Date(data.purchase_date);
-      const dueDate = new Date(data.due_date);
-      if (dueDate < purchaseDate) errors.due_date = "Due date cannot be before purchase date";
+    // Basic field validation
+    if (!data.investor_id) {
+      errors.investor_id = "Investor is required";
     }
 
-    if (Number(data.discount_value) < 0) errors.discount_value = "Discount value cannot be negative";
-    if (Number(data.shipping_value) < 0) errors.shipping_value = "Shipping value cannot be negative";
-    if (Number(data.amount_paid) < 0) errors.amount_paid = "Amount paid cannot be negative";
-    if (Number(data.amount_paid) > Number(data.total)) errors.amount_paid = "Amount paid cannot exceed total amount";
+    if (!data.sale_date) {
+      errors.sale_date = "Sale date is required";
+    }
 
-    (data.items || []).forEach((item: any, index: number) => {
-      if (!item.product_name) errors[`items.${index}.product_name`] = "Product name is required";
-      if (Number(item.quantity) <= 0) errors[`items.${index}.quantity`] = "Quantity must be greater than 0";
-      if (Number(item.unit_price) < 0) errors[`items.${index}.unit_price`] = "Unit price cannot be negative";
-      if (Number(item.sale_price) < 0) errors[`items.${index}.sale_price`] = "Sale price cannot be negative";
-      if (Number(item.sale_price) < Number(item.unit_price)) {
-        errors[`items.${index}.sale_price`] = "Sale price must be greater than purchase price";
+    const discountValue = Number(data.discount_value) || 0;
+    const subtotalValue = Number(data.subtotal) || 0;
+
+    if (discountValue < 0) {
+      errors.discount_value = "Discount value cannot be negative";
+    }
+
+    if (discountValue > subtotalValue) {
+      errors.discount_value = "Discount cannot exceed subtotal";
+    }
+
+    // Items validation
+    const items = Array.isArray(data.items) ? data.items : [];
+    items.forEach((item, index) => {
+      const purchaseItem = purchaseItems.find(pi => pi.id === item.purchase_item_id);
+      const availableQty = purchaseItem?.available_quantity || 0;
+
+      if (!item.purchase_item_id) {
+        errors[`items.${index}.purchase_item_id`] = "Product is required";
+      }
+
+      const quantity = Number(item.quantity) || 0;
+      if (quantity <= 0) {
+        errors[`items.${index}.quantity`] = "Quantity must be greater than 0";
+      } else if (quantity > (availableQty + quantity)) {
+        errors[`items.${index}.quantity`] = `Only ${availableQty} items available`;
+      }
+
+      const salePrice = Number(item.sale_price) || 0;
+      if (salePrice < 0) {
+        errors[`items.${index}.sale_price`] = "Sale price cannot be negative";
+      }
+
+      const unitPrice = purchaseItem?.unit_price || 0;
+      if (salePrice < unitPrice) {
+        errors[`items.${index}.sale_price`] = "Sale price should not be below purchase price";
       }
     });
 
-    setValidationErrors(errors);
+    setLocalErrors(errors);
     return Object.keys(errors).length === 0;
-  };
+  }, [data, purchaseItems]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!validateForm()) {
-        toast.error("Please fix the validation errors");
-        return;
+      toast.error("Please fix the validation errors before submitting");
+      return;
     }
 
-    // Create FormData to handle file uploads
-    const formData = new FormData();
+    const items = Array.isArray(data.items) ? data.items : [];
+    if (items.length === 0) {
+      toast.error("Please add at least one item to the sale");
+      return;
+    }
 
-    // Append all form data to FormData
-    Object.keys(data).forEach(key => {
-        if (key === 'items') {
-          formData.append(key, JSON.stringify(data[key]));
-        } else if (key === 'invoice_image' && data[key]) {
-          formData.append(key, data[key] as File);
-        } else if (data[key] !== null && data[key] !== undefined) {
-          formData.append(key, data[key] as string);
-        }
-    });
+    // Prepare form data with proper number conversion
+    const formData = {
+      ...data,
+      subtotal: Number(data.subtotal) || 0,
+      discount_value: Number(data.discount_value) || 0,
+      total: Number(data.total) || 0,
+      items: items.map(item => ({
+        purchase_item_id: item.purchase_item_id,
+        quantity: Number(item.quantity) || 0,
+        unit_price: Number(item.unit_price) || 0,
+        sale_price: Number(item.sale_price) || 0,
+        subtotal: Number(item.subtotal) || 0,
+      }))
+    };
 
-    // Use the correct approach for form submission
-    post(route('purchases.update', purchase.id), formData, {
-        forceFormData: true,
-        onSuccess: () => {
-          toast.success("Purchase updated successfully!");
-        },
-        onError: (errors) => {
-          toast.error("Failed to update purchase.");
-          if (errors) {
-              setValidationErrors(errors);
-          }
-        },
+    put(route('sales.update', sale.id), formData, {
+      preserveScroll: true,
+      onSuccess: () => {
+        toast.success("Sale updated successfully!");
+      },
+      onError: () => {
+        toast.error("Failed to update sale. Please check the form for errors.");
+      },
     });
   };
 
-  const addItem = () => {
-    setData("items", [
-      ...data.items,
-      {
-        product_name: "",
-        barcode_prinsipal: "",
-        quantity: 1,
-        unit_price: 0,
-        subtotal: 0,
-        sale_price: 0,
-      },
-    ]);
+  const addItemFromSearch = (purchaseItem: PurchaseItem) => {
+    const items = Array.isArray(data.items) ? data.items : [];
+
+    if (items.some(item => item.purchase_item_id === purchaseItem.id)) {
+      toast.warning("This item is already in the sale");
+      return;
+    }
+
+    const newItem: SaleItemForm = {
+      purchase_item_id: purchaseItem.id,
+      quantity: 1,
+      unit_price: Number(purchaseItem.unit_price) || 0,
+      sale_price: Number(purchaseItem.sale_price) || 0,
+      subtotal: Number(purchaseItem.sale_price) || 0,
+      product_name: purchaseItem.product_name || "",
+      barcode_generated: purchaseItem.barcode_generated || "",
+      available_quantity: purchaseItem.available_quantity || 0,
+    };
+
+    setData("items", [...items, newItem]);
+    setSearchTerm("");
+    setShowSearchResults(false);
+
+    // Clear related errors
+    setLocalErrors(prev => {
+      const newErrors = { ...prev };
+      Object.keys(newErrors).forEach(key => {
+        if (key.startsWith('items.')) delete newErrors[key];
+      });
+      return newErrors;
+    });
   };
 
   const removeItem = (index: number) => {
-    if (data.items.length <= 1) {
-      toast.warning("You need at least one item");
+    const items = Array.isArray(data.items) ? data.items : [];
+
+    if (items.length <= 1) {
+      toast.warning("You need at least one item in the sale");
       return;
     }
-    const updated = data.items.filter((_: any, i: number) => i !== index);
-    setData("items", updated);
 
-    // clear any validation errors for that item
-    const newErrors = { ...validationErrors };
-    Object.keys(newErrors).forEach((k) => {
-      if (k.startsWith(`items.${index}.`)) delete newErrors[k];
+    const updatedItems = items.filter((_, i) => i !== index);
+    setData("items", updatedItems);
+
+    // Clear related errors
+    setLocalErrors(prev => {
+      const newErrors = { ...prev };
+      Object.keys(newErrors).forEach(key => {
+        if (key.startsWith(`items.${index}.`)) delete newErrors[key];
+      });
+      return newErrors;
     });
-    setValidationErrors(newErrors);
   };
 
-  const updateItem = (index: number, key: keyof PurchaseItem, value: any) => {
-    const updated = [...data.items];
+  const updateItem = (index: number, field: keyof SaleItemForm, value: any) => {
+    const items = Array.isArray(data.items) ? data.items : [];
+    const updatedItems = [...items];
 
-    // convert numeric inputs
-    if (key === "quantity") updated[index][key] = parseInt(value as any) || 0;
-    else if (key === "unit_price" || key === "sale_price")
-      updated[index][key] = parseFloat(value as any) || 0;
-    else updated[index][key] = value;
+    if (field === "quantity") {
+      const quantity = Math.max(parseInt(value) || 0, 0);
+      const availableQty = updatedItems[index]?.available_quantity || 0;
+      updatedItems[index].quantity = Math.min(quantity, availableQty);
+    } else if (field === "sale_price") {
+      updatedItems[index].sale_price = Math.max(parseFloat(value) || 0, 0);
+    } else {
+      (updatedItems[index] as any)[field] = value;
+    }
 
-    // recalc item subtotal (quantity * unit_price)
-    const qty = Number(updated[index].quantity) || 0;
-    const price = Number(updated[index].unit_price) || 0;
-    updated[index].subtotal = parseFloat((qty * price).toFixed(2));
+    // Recalculate subtotal
+    const quantity = Number(updatedItems[index].quantity) || 0;
+    const salePrice = Number(updatedItems[index].sale_price) || 0;
+    updatedItems[index].subtotal = parseFloat((quantity * salePrice).toFixed(2));
 
-    setData("items", updated);
+    setData("items", updatedItems);
 
-    // clear related validation errors
-    const newErrors = { ...validationErrors };
-    delete newErrors[`items.${index}.quantity`];
-    delete newErrors[`items.${index}.unit_price`];
-    delete newErrors[`items.${index}.sale_price`];
-    delete newErrors[`items.${index}.product_name`];
-    setValidationErrors(newErrors);
+    // Clear field-specific error
+    setLocalErrors(prev => {
+      const newErrors = { ...prev };
+      delete newErrors[`items.${index}.${field}`];
+      return newErrors;
+    });
   };
 
-  const handleFieldChange = (field: string, value: any) => {
+  const handleFieldChange = (field: keyof SaleFormData, value: any) => {
     setData(field, value);
 
     if (validationErrors[field]) {
-      const newErrors = { ...validationErrors };
-      delete newErrors[field];
-      setValidationErrors(newErrors);
+      setLocalErrors(prev => {
+        const newErrors = { ...prev };
+        delete newErrors[field];
+        return newErrors;
+      });
+    }
+
+    // Clear items when investor changes
+    if (field === "investor_id" && data.items.length > 0) {
+      setData("items", []);
+      toast.info("Items cleared for new investor selection");
     }
   };
 
-  const breadcrumbs: BreadcrumbItem[] = [
-    { title: "Purchases", href: "/purchases" },
-    { title: "Edit", href: `/purchases/${purchase.id}/edit` },
-  ];
+  const getAvailableQuantity = (purchaseItemId: number): number => {
+    return purchaseItems.find(pi => pi.id === purchaseItemId)?.available_quantity || 0;
+  };
+
+  const formatCurrency = (amount: number): string => {
+    return new Intl.NumberFormat('en-DZ', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(amount);
+  };
+
+  // Shopping Cart Icon Component
+  const ShoppingCart = ({ className }: { className?: string }) => (
+    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
+    </svg>
+  );
+
+  const items = Array.isArray(data.items) ? data.items : [];
 
   return (
     <AppLayout
       breadcrumbs={breadcrumbs}
       actions={
         <Button asChild variant="outline" size="sm">
-          <Link href={route('purchases')}>
+          <Link href={route('sales')}>
             <ArrowLeft className="h-4 w-4 mr-2" />
-            Back to Purchases
+            Back to Sales
           </Link>
         </Button>
       }
     >
-      <Head title="Edit Purchase" />
+      <Head title={`Edit ${sale.invoice_number || `Sale #${sale.id}`}`} />
 
-      <div className="py-6 px-4 md:px-8">
-        <div className="mb-8 flex flex-col gap-2">
-          <h1 className="text-3xl font-bold tracking-tight">Edit Purchase #{purchase.id}</h1>
+      <div className="py-6 px-4">
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold tracking-tight text-gray-900 dark:text-white">
+            Edit Sale {sale.invoice_number && `- ${sale.invoice_number}`}
+          </h1>
+          <p className="text-gray-600 mt-2">Update sale transaction information</p>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-10">
-          {/* Purchase Information Section */}
+        <form onSubmit={handleSubmit} className="space-y-8">
+          {/* Sale Information */}
           <Card>
-            <CardHeader>
-              <CardTitle className="text-xl">Purchase Information</CardTitle>
-              <CardDescription>Update the details for this purchase</CardDescription>
+            <CardHeader className="pb-4">
+              <CardTitle className="text-xl flex items-center gap-2">
+                <Edit className="h-5 w-5" />
+                Sale Information
+              </CardTitle>
+              <CardDescription>Update basic details about the sale transaction</CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-                {/* Supplier */}
-                <div className="space-y-2">
-                  <Label htmlFor="supplier_id" className={cn(validationErrors.supplier_id && "text-destructive")}>
-                    Supplier *
-                  </Label>
-                  <select
-                    id="supplier_id"
-                    value={data.supplier_id}
-                    onChange={(e) => handleFieldChange("supplier_id", e.target.value)}
-                    className={cn(
-                      "flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm",
-                      validationErrors.supplier_id && "border-destructive"
-                    )}
-                  >
-                    <option value="">Select Supplier</option>
-                    {suppliers.map((supplier) => (
-                      <option key={supplier.id} value={supplier.id}>
-                        {supplier.name}
-                      </option>
-                    ))}
-                  </select>
-                  {validationErrors.supplier_id && (
-                    <p className="text-sm text-destructive flex items-center gap-1">
-                      <AlertCircle className="h-3 w-3" />
-                      {validationErrors.supplier_id}
-                    </p>
-                  )}
-                </div>
-
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 {/* Investor */}
                 <div className="space-y-2">
-                  <Label htmlFor="investor_id" className={cn(validationErrors.investor_id && "text-destructive")}>
-                    Investor *
+                  <Label htmlFor="investor_id" className="required">
+                    Investor
                   </Label>
                   <select
                     id="investor_id"
                     value={data.investor_id}
                     onChange={(e) => handleFieldChange("investor_id", e.target.value)}
                     className={cn(
-                      "flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm",
+                      "flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2",
                       validationErrors.investor_id && "border-destructive"
                     )}
                   >
                     <option value="">Select Investor</option>
-                    {investors.map((inv) => (
-                      <option key={inv.id} value={inv.id}>
-                        {inv.name} — Balance: {Number(inv.current_balance).toFixed(2)} {data.currency}
+                    {investors.map((investor) => (
+                      <option key={investor.id} value={investor.id}>
+                        {investor.name}
                       </option>
                     ))}
                   </select>
@@ -353,33 +483,46 @@ export default function PurchasesEditPage({ purchase, suppliers, investors, amou
                   )}
                 </div>
 
-                {/* Invoice No */}
+                {/* Invoice Number */}
                 <div className="space-y-2">
-                  <Label htmlFor="supplier_invoice_number">Supplier Invoice Number</Label>
-                  <Input
-                    id="supplier_invoice_number"
-                    value={data.supplier_invoice_number}
-                    onChange={(e) => handleFieldChange("supplier_invoice_number", e.target.value)}
-                    placeholder="e.g, BEBEMODE-0001"
-                  />
-                </div>
-
-                {/* Purchase Date */}
-                <div className="space-y-2">
-                  <Label htmlFor="purchase_date" className={cn(validationErrors.purchase_date && "text-destructive")}>
-                    Purchase Date *
+                  <Label htmlFor="invoice_number">
+                    Invoice Number
                   </Label>
                   <Input
-                    id="purchase_date"
-                    type="date"
-                    value={data.purchase_date}
-                    onChange={(e) => handleFieldChange("purchase_date", e.target.value)}
-                    className={validationErrors.purchase_date && "border-destructive"}
+                    id="invoice_number"
+                    value={data.invoice_number}
+                    onChange={(e) => handleFieldChange("invoice_number", e.target.value)}
+                    placeholder="SALE-001"
+                    className={cn(
+                      validationErrors.invoice_number && "border-destructive"
+                    )}
                   />
-                  {validationErrors.purchase_date && (
+                  {validationErrors.invoice_number && (
                     <p className="text-sm text-destructive flex items-center gap-1">
                       <AlertCircle className="h-3 w-3" />
-                      {validationErrors.purchase_date}
+                      {validationErrors.invoice_number}
+                    </p>
+                  )}
+                </div>
+
+                {/* Sale Date */}
+                <div className="space-y-2">
+                  <Label htmlFor="sale_date" className="required">
+                    Sale Date
+                  </Label>
+                  <Input
+                    id="sale_date"
+                    type="date"
+                    value={data.sale_date}
+                    onChange={(e) => handleFieldChange("sale_date", e.target.value)}
+                    className={cn(
+                      validationErrors.sale_date && "border-destructive"
+                    )}
+                  />
+                  {validationErrors.sale_date && (
+                    <p className="text-sm text-destructive flex items-center gap-1">
+                      <AlertCircle className="h-3 w-3" />
+                      {validationErrors.sale_date}
                     </p>
                   )}
                 </div>
@@ -387,328 +530,380 @@ export default function PurchasesEditPage({ purchase, suppliers, investors, amou
             </CardContent>
           </Card>
 
-          {/* Items Section - Similar to create page but with existing items */}
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle className="text-xl">Purchase Items</CardTitle>
-              <Button type="button" variant="outline" onClick={addItem} size="sm" className="ml-2">
-                <Plus className="h-4 w-4 mr-2" /> Add Item
-              </Button>
-            </CardHeader>
-
-            <CardContent className="space-y-4">
-              {data.items.map((item: any, index: number) => (
-                <div key={index} className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end p-4 rounded-lg border">
-                  {/* Product */}
-                  <div className="space-y-2 md:col-span-2">
-                    <Label className={cn(validationErrors[`items.${index}.product_name`] && "text-destructive")}>
-                      Product *
-                    </Label>
-                    <Input
-                      className={cn("w-full", validationErrors[`items.${index}.product_name`] && "border-destructive")}
-                      value={item.product_name}
-                      onChange={(e) => updateItem(index, "product_name", e.target.value)}
-                      placeholder="Product name"
-                    />
-                    {validationErrors[`items.${index}.product_name`] && (
-                      <p className="text-sm text-destructive flex items-center gap-1">
-                        <AlertCircle className="h-3 w-3" />
-                        {validationErrors[`items.${index}.product_name`]}
-                      </p>
-                    )}
-                  </div>
-
-                  {/* Barcode */}
-                  <div className="space-y-2 md:col-span-1">
-                    <Label className={cn(validationErrors[`items.${index}.barcode_prinsipal`] && "text-destructive")}>
-                      Barcode / Ref
-                    </Label>
-                    <Input
-                      className={cn("w-full", validationErrors[`items.${index}.barcode_prinsipal`] && "border-destructive")}
-                      value={item.barcode_prinsipal}
-                      onChange={(e) => updateItem(index, "barcode_prinsipal", e.target.value)}
-                      placeholder="barcode or ref"
-                    />
-                  </div>
-
-                  {/* Quantity */}
-                  <div className="space-y-2 md:col-span-1">
-                    <Label className={cn(validationErrors[`items.${index}.quantity`] && "text-destructive")}>Qty *</Label>
-                    <Input
-                      type="number"
-                      min="1"
-                      className={cn("w-full", validationErrors[`items.${index}.quantity`] && "border-destructive")}
-                      value={item.quantity}
-                      onChange={(e) => updateItem(index, "quantity", e.target.value)}
-                    />
-                    {validationErrors[`items.${index}.quantity`] && (
-                      <p className="text-sm text-destructive flex items-center gap-1">
-                        <AlertCircle className="h-3 w-3" />
-                        {validationErrors[`items.${index}.quantity`]}
-                      </p>
-                    )}
-                  </div>
-
-                  {/* Purchase Price */}
-                  <div className="space-y-2 md:col-span-2">
-                    <Label className={cn(validationErrors[`items.${index}.unit_price`] && "text-destructive")}>Purchase Price *</Label>
-                    <Input
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      className={cn("w-full", validationErrors[`items.${index}.unit_price`] && "border-destructive")}
-                      value={item.unit_price}
-                      onChange={(e) => updateItem(index, "unit_price", e.target.value)}
-                    />
-                    {validationErrors[`items.${index}.unit_price`] && (
-                      <p className="text-sm text-destructive flex items-center gap-1">
-                        <AlertCircle className="h-3 w-3" />
-                        {validationErrors[`items.${index}.unit_price`]}
-                      </p>
-                    )}
-                  </div>
-
-                  {/* Sale Price */}
-                  <div className="space-y-2 md:col-span-2">
-                    <Label className={cn(validationErrors[`items.${index}.sale_price`] && "text-destructive")}>Sale Price *</Label>
-                    <Input
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      className={cn("w-full", validationErrors[`items.${index}.sale_price`] && "border-destructive")}
-                      value={item.sale_price}
-                      onChange={(e) => updateItem(index, "sale_price", e.target.value)}
-                    />
-                    {validationErrors[`items.${index}.sale_price`] && (
-                      <p className="text-sm text-destructive flex items-center gap-1">
-                        <AlertCircle className="h-3 w-3" />
-                        {validationErrors[`items.${index}.sale_price`]}
-                      </p>
-                    )}
-                  </div>
-
-                  {/* Subtotal */}
-                  <div className="space-y-2 md:col-span-2">
-                    <Label>Subtotal</Label>
-                    <Input
-                      type="number"
-                      className="w-full bg-muted"
-                      value={Number(item.subtotal || 0).toFixed(2)}
-                      readOnly
-                    />
-                  </div>
-
-                  {/* Delete Button */}
-                  <div className="flex md:col-span-1">
-                    <Button
-                      type="button"
-                      variant="destructive"
-                      size="icon"
-                      className="h-9 w-9 rounded-2 transition-all duration-200 hover:scale-105 hover:shadow-md"
-                      onClick={() => removeItem(index)}
-                      disabled={data.items.length <= 1}
-                      aria-label="Remove item"
-                    >
-                      <Trash className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-              ))}
-            </CardContent>
-          </Card>
-
-          {/* Financial Details */}
-          <div className="flex justify-end">
-            <Card className="w-full md:w-1/2">
-              <CardHeader>
-                <CardTitle className="text-xl">Financial Details</CardTitle>
+          {/* Product Search - Only show if investor is selected */}
+          {data.investor_id ? (
+            <Card className=" border dark:border-zinc-800 shadow-sm">
+              <CardHeader className="pb-4">
+                <CardTitle className="text-xl flex items-center gap-2">
+                  <Search className="h-5 w-5" />
+                  Add Products
+                  {loadingProducts && (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  )}
+                </CardTitle>
+                <CardDescription>
+                  {loadingProducts ? (
+                    "Loading products..."
+                  ) : (
+                    `Search for products by barcode or name. ${availablePurchaseItems.length} products available in stock for this investor.`
+                  )}
+                </CardDescription>
               </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid grid-cols-1 gap-4">
-                  {/* Subtotal */}
-                  <div className="space-y-2">
-                    <Label htmlFor="subtotal">Subtotal</Label>
+              <CardContent>
+                <div className="relative search-container">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                     <Input
-                      id="subtotal"
-                      type="number"
-                      value={Number(data.subtotal || 0).toFixed(2)}
-                      readOnly
-                      className="font-semibold bg-muted"
+                      type="text"
+                      placeholder="Search by barcode, product name, or reference..."
+                      value={searchTerm}
+                      onChange={(e) => {
+                        setSearchTerm(e.target.value);
+                        setShowSearchResults(true);
+                      }}
+                      onFocus={() => setShowSearchResults(true)}
+                      className="pl-10 pr-10"
+                      disabled={loadingProducts || availablePurchaseItems.length === 0}
                     />
+                    {searchTerm && (
+                      <button
+                        type="button"
+                        onClick={() => setSearchTerm("")}
+                        className="absolute right-3 top-3 text-muted-foreground hover:text-foreground"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    )}
                   </div>
 
-                  {/* Discount Reason + Value */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="discount_reason">Discount Reason</Label>
-                      <Input
-                        id="discount_reason"
-                        value={data.discount_reason}
-                        onChange={(e) => handleFieldChange("discount_reason", e.target.value)}
-                        placeholder="Reason for discount"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="discount_value">Discount Value</Label>
-                      <Input
-                        id="discount_value"
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        value={Number(data.discount_value || 0)}
-                        onChange={(e) => handleFieldChange("discount_value", parseFloat(e.target.value || "0"))}
-                      />
-                    </div>
-                  </div>
-
-                  {/* Shipping Note + Value */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="shipping_note">Shipping Note</Label>
-                      <Input
-                        id="shipping_note"
-                        value={data.shipping_note}
-                        onChange={(e) => handleFieldChange("shipping_note", e.target.value)}
-                        placeholder="Shipping details"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="shipping_value">Shipping Value</Label>
-                      <Input
-                        id="shipping_value"
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        value={Number(data.shipping_value || 0)}
-                        onChange={(e) => handleFieldChange("shipping_value", parseFloat(e.target.value || "0"))}
-                      />
-                    </div>
-                  </div>
-
-                  {/* Investor Balance Info */}
-                  {selectedInvestor && (
-                    <div className="p-3 bg-blue-600 rounded-md border border-blue-400">
-                      <div className="flex justify-between items-center">
-                        <span className="text-sm font-medium text-white">Investor Balance:</span>
-                        <span className="text-sm font-semibold text-white">
-                          {selectedInvestor.current_balance.toFixed(2)} {data.currency}
-                        </span>
-                      </div>
+                  {/* Search Results */}
+                  {showSearchResults && searchResults.length > 0 && (
+                    <div className="absolute z-50 w-full mt-2 bg-white dark:bg-zinc-950 border border-gray-200 dark:border-zinc-800 rounded-lg shadow-lg max-h-60 overflow-auto">
+                      {searchResults.map((item) => (
+                        <button
+                          key={item.id}
+                          type="button"
+                          className="w-full p-3 text-left border-b last:border-b-0 hover:bg-gray-50 dark:hover:bg-zinc-900 transition-colors"
+                          onClick={() => addItemFromSearch(item)}
+                        >
+                          <div className="font-medium text-sm">{item.product_name}</div>
+                          <div className="text-xs text-gray-600 dark:text-gray-400 mt-1">
+                            Barcode: {item.barcode_generated} | Available: {item.available_quantity} | Price: {formatCurrency(item.sale_price || 0)} DZD
+                          </div>
+                        </button>
+                      ))}
                     </div>
                   )}
 
-                  {/* Total */}
-                  <div className="space-y-2">
-                    <Label htmlFor="total">Total Amount</Label>
+                  {/* No products available message */}
+                  {!loadingProducts && availablePurchaseItems.length === 0 && data.investor_id && (
+                    <div className="mt-2 p-3 bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800 rounded-md">
+                      <p className="text-amber-800 dark:text-amber-200 text-sm">
+                        No products available for this investor. Please select a different investor or ensure the investor has products in stock.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          ) : (
+            <Card className=" border dark:border-zinc-800 shadow-sm">
+              <CardHeader className="pb-4">
+                <CardTitle className="text-xl flex items-center gap-2">
+                  <Search className="h-5 w-5" />
+                  Add Products
+                </CardTitle>
+                <CardDescription>
+                  Please select an investor first to view available products.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="p-4 bg-gray-50 dark:bg-zinc-900 rounded-lg text-center">
+                  <AlertCircle className="h-8 w-8 mx-auto text-gray-400 dark:text-gray-500 mb-2" />
+                  <p className="text-gray-600 dark:text-gray-400">
+                    Select an investor to view available products
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Sale Items */}
+          <Card className="border dark:border-zinc-800 shadow-sm">
+            <CardHeader className="pb-4">
+              <CardTitle className="text-xl flex items-center gap-2 text-zinc-900 dark:text-zinc-100">
+                <ShoppingCart className="h-5 w-5 text-zinc-700 dark:text-zinc-300" />
+                Shopping Cart
+                </CardTitle>
+              <CardDescription className="text-zinc-600 dark:text-zinc-400">
+                {items.length} item(s) added to this sale
+              </CardDescription>
+            </CardHeader>
+
+            <CardContent>
+              {items.length === 0 ? (
+                <div className="text-center py-10 border-2 border-dashed rounded-lg bg-zinc-50 dark:bg-zinc-900 dark:border-zinc-700">
+                  <ShoppingCart className="h-12 w-12 mx-auto mb-4 opacity-40 text-zinc-500 dark:text-zinc-400" />
+                  <p className="font-medium text-zinc-700 dark:text-zinc-200">No items added yet</p>
+                  <p className="text-sm mt-1 text-zinc-600 dark:text-zinc-400">
+                    {data.investor_id
+                      ? "Search for products above to add them to the sale."
+                      : "Select an investor first to add products."}
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {items.map((item, index) => {
+                    const availableQty = getAvailableQuantity(item.purchase_item_id);
+                    const maxQuantity = Math.min(availableQty, 99999);
+
+                    return (
+                      <div
+                        key={index}
+                        className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-14 gap-4 p-4 border rounded-lg bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-700 shadow-sm"
+                      >
+                        {/* Product Info */}
+                        <div className="lg:col-span-4">
+                          <Label className="text-sm font-medium text-zinc-700 dark:text-zinc-200">
+                            Product{" "}
+                            <span className="text-zinc-500 dark:text-zinc-400">
+                              ({item.barcode_generated})
+                            </span>
+                          </Label>
+                          <div className="mt-1 p-2 bg-zinc-50 dark:bg-zinc-800 rounded-md border border-zinc-200 dark:border-zinc-700">
+                            <div className="font-medium text-sm text-zinc-900 dark:text-zinc-100">
+                              {item.product_name}
+                            </div>
+                          </div>
+                          {validationErrors[`items.${index}.purchase_item_id`] && (
+                            <p className="text-sm text-destructive mt-1 flex items-center gap-1">
+                              <AlertCircle className="h-3 w-3" />
+                              {validationErrors[`items.${index}.purchase_item_id`]}
+                            </p>
+                          )}
+                        </div>
+
+                        {/* Quantity */}
+                        <div className="lg:col-span-2">
+                          <Label
+                            htmlFor={`quantity-${index}`}
+                            className="required text-zinc-700 dark:text-zinc-200"
+                          >
+                            Quantity
+                          </Label>
+                          <span className="text-xs text-zinc-500 dark:text-zinc-400">
+                            {" "}
+                            (Available: {availableQty})
+                          </span>
+                          <Input
+                            id={`quantity-${index}`}
+                            type="number"
+                            min="1"
+                            max={maxQuantity + item.quantity}
+                            value={item.quantity}
+                            onChange={(e) =>
+                              updateItem(index, "quantity", e.target.value)
+                            }
+                            className={cn(
+                              "mt-1 bg-white dark:bg-zinc-800 dark:text-zinc-100 border-zinc-300 dark:border-zinc-600",
+                              validationErrors[`items.${index}.quantity`] &&
+                              "border-destructive"
+                            )}
+                          />
+                          {validationErrors[`items.${index}.quantity`] && (
+                            <p className="text-sm text-destructive mt-1 flex items-center gap-1">
+                              <AlertCircle className="h-3 w-3" />
+                              {validationErrors[`items.${index}.quantity`]}
+                            </p>
+                          )}
+                        </div>
+
+
+                        {/* Purchase Price */}
+                        <div className="lg:col-span-2">
+                            <Label
+                            htmlFor={`price-${index}`}
+                            className="required text-zinc-700 dark:text-zinc-200"
+                            >
+                            Purchase Price (DZD)
+                            </Label>
+                            <Input
+                            readOnly
+                            id={`price-${index}`}
+                            type="number"
+                            value={item.unit_price}
+                            className={"mt-1 bg-red-600 text-white dark:bg-red-800 dark:text-zinc-100 border-zinc-300 dark:border-zinc-600 "}
+                            />
+                        </div>
+
+                        {/* Sale Price */}
+                        <div className="lg:col-span-2">
+                          <Label
+                            htmlFor={`price-${index}`}
+                            className="required text-zinc-700 dark:text-zinc-200"
+                          >
+                            Sale Price (DZD)
+                          </Label>
+                          <Input
+                            id={`price-${index}`}
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={item.sale_price}
+                            onChange={(e) =>
+                              updateItem(index, "sale_price", e.target.value)
+                            }
+                            className={cn(
+                              "mt-1 bg-white dark:bg-zinc-800 dark:text-zinc-100 border-zinc-300 dark:border-zinc-600",
+                              validationErrors[`items.${index}.sale_price`] &&
+                              "border-destructive"
+                            )}
+                          />
+                          {validationErrors[`items.${index}.sale_price`] && (
+                            <p className="text-sm text-destructive mt-1 flex items-center gap-1">
+                              <AlertCircle className="h-3 w-3" />
+                              {validationErrors[`items.${index}.sale_price`]}
+                            </p>
+                          )}
+                        </div>
+
+                        {/* Subtotal */}
+                        <div className="lg:col-span-2">
+                          <Label className="text-zinc-700 dark:text-zinc-200">
+                            Subtotal (DZD)
+                          </Label>
+                          <Input
+                            value={formatCurrency(item.subtotal)}
+                            readOnly
+                            className="mt-1 bg-zinc-100 dark:bg-zinc-800 dark:text-zinc-100 font-medium border-zinc-200 dark:border-zinc-700"
+                          />
+                        </div>
+
+                        {/* Actions */}
+                        <div className="flex items-end justify-end lg:col-span-2">
+                          <Button
+                            type="button"
+                            variant="destructive"
+                            size="icon"
+                            onClick={() => removeItem(index)}
+                            className="h-9 w-9 mt-2 lg:mt-7"
+                            disabled={items.length <= 1}
+                          >
+                            <Trash className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Financial Summary */}
+          <div className="flex justify-end">
+            <Card className="w-full lg:w-2/5">
+              <CardHeader>
+                <CardTitle className="text-xl">Financial Summary</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {/* Subtotal */}
+                <div className="flex justify-between items-center">
+                  <Label className="text-base">Subtotal</Label>
+                  <span className="text-lg font-semibold">
+                    {formatCurrency(Number(data.subtotal) || 0)} DZD
+                  </span>
+                </div>
+
+                {/* Discount */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="discount_reason">Discount Reason</Label>
                     <Input
-                      id="total"
-                      type="number"
-                      value={Number(data.total || 0).toFixed(2)}
-                      readOnly
-                      className="text-lg font-bold bg-muted"
+                      id="discount_reason"
+                      value={data.discount_reason}
+                      onChange={(e) => handleFieldChange("discount_reason", e.target.value)}
+                      placeholder="Special offer, bulk discount, etc."
+                      className="mt-1"
                     />
                   </div>
-
-                  {/* Amount Paid */}
-                  <div className="space-y-2">
-                    <Label htmlFor="amount_paid" className={cn(validationErrors.amount_paid && "text-destructive")}>
-                      Amount Paid
-                    </Label>
+                  <div>
+                    <Label htmlFor="discount_value">Discount Amount (DZD)</Label>
                     <Input
-                      id="amount_paid"
+                      id="discount_value"
                       type="number"
                       min="0"
                       step="0.01"
-                      max={data.total}
-                      value={data.amount_paid}
-                      onChange={(e) => {
-                        const paid = Math.min(parseFloat(e.target.value || "0"), data.total);
-                        handleFieldChange("amount_paid", paid);
-                      }}
-                      placeholder="Enter amount paid"
-                      className={validationErrors.amount_paid && "border-destructive"}
+                      max={Number(data.subtotal) || 0}
+                      value={data.discount_value}
+                      onChange={(e) => handleFieldChange("discount_value", Math.max(parseFloat(e.target.value) || 0, 0))}
+                      className={cn(
+                        "mt-1",
+                        validationErrors.discount_value && "border-destructive"
+                      )}
                     />
-                    {validationErrors.amount_paid && (
-                      <p className="text-sm text-destructive flex items-center gap-1">
+                    {validationErrors.discount_value && (
+                      <p className="text-sm text-destructive mt-1 flex items-center gap-1">
                         <AlertCircle className="h-3 w-3" />
-                        {validationErrors.amount_paid}
+                        {validationErrors.discount_value}
                       </p>
                     )}
                   </div>
+                </div>
 
-                  {/* Amount Remaining */}
-                  <div className="space-y-2">
-                    <Label htmlFor="amount_remaining">Amount Remaining</Label>
-                    <Input
-                      id="amount_remaining"
-                      type="number"
-                      value={amountRemaining.toFixed(2)}
-                      readOnly
-                      className={cn(
-                        "font-semibold text-white",
-                        amountRemaining > 0 ? "bg-amber-500" : "bg-green-500"
-                      )}
-                    />
-                  </div>
+                {/* Total */}
+                <div className="flex justify-between items-center pt-4 border-t">
+                  <Label className="text-lg font-semibold">Total Amount</Label>
+                  <span className="text-xl font-bold text-primary">
+                    {formatCurrency(Number(data.total) || 0)} DZD
+                  </span>
                 </div>
               </CardContent>
             </Card>
           </div>
-
-          {/* File Upload */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-xl">Invoice File</CardTitle>
-              <CardDescription>
-                {purchase.invoice_image ? "Current file: " + purchase.invoice_image : "Upload new invoice (PDF, JPG, PNG, XLSX)"}
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Input
-                type="file"
-                accept=".pdf,.jpg,.jpeg,.png,.xlsx,.xls"
-                onChange={(e) => {
-                  if (e.target.files && e.target.files[0]) {
-                    setData("invoice_image", e.target.files[0]);
-                  } else {
-                    setData("invoice_image", null);
-                  }
-                }}
-              />
-              {data.invoice_image && <p className="text-sm mt-2">New file: {data.invoice_image.name}</p>}
-            </CardContent>
-          </Card>
 
           {/* Additional Information */}
           <Card>
             <CardHeader>
               <CardTitle className="text-xl">Additional Information</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-2">
-              <Label htmlFor="note">Notes</Label>
+            <CardContent>
+              <Label htmlFor="note">Notes (Optional)</Label>
               <Textarea
                 id="note"
                 value={data.note}
                 onChange={(e) => setData("note", e.target.value)}
-                placeholder="Additional information about this purchase..."
-                rows={4}
+                placeholder="Any additional information about this sale..."
+                rows={3}
+                className="mt-2"
               />
             </CardContent>
           </Card>
 
           {/* Form Actions */}
           <div className="flex justify-end gap-3 pt-6 border-t">
-            <Button type="button" variant="outline" asChild disabled={processing}>
-              <Link href={route('purchases')}>Cancel</Link>
+            <Button
+              type="button"
+              variant="outline"
+              asChild
+              disabled={processing}
+            >
+              <Link href={route('sales')}>Cancel</Link>
             </Button>
-            <Button type="submit" disabled={processing}>
+            <Button
+              type="submit"
+              disabled={processing || items.length === 0 || !data.investor_id}
+              className="min-w-32"
+            >
               {processing ? (
                 <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
                   Updating...
                 </>
               ) : (
-                "Update Purchase"
+                <>
+                  Update Sale
+                </>
               )}
             </Button>
           </div>

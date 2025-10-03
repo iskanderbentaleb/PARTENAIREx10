@@ -50,9 +50,26 @@ type Purchase = {
 };
 
 export default function PurchasesPage({ purchases, paginationLinks }: any) {
+
+    const formatDate = (dateString: string) => {
+        const date = new Date(dateString);
+        return date.toLocaleDateString('en-US', {
+            weekday: 'long',
+            day: 'numeric',
+            month: 'long',
+            year: 'numeric'
+        });
+    };
+
   const columns: ColumnDef<Purchase>[] = [
     { accessorKey: 'id', header: 'ID' },
     { accessorKey: 'supplier_invoice_number', header: 'Invoice No.' },
+    { accessorKey: "purchase_date", header: "Purchase Date",
+        cell: ({ row }) => {
+        const date = new Date(row.getValue("purchase_date"));
+        return formatDate(date.toISOString());
+        },
+    },
     { accessorKey: 'supplier.name', header: 'Supplier', cell: ({ row }) => row.original.supplier?.name ?? '—' },
     { accessorKey: 'investor.name', header: 'Investor', cell: ({ row }) => row.original.investor?.name ?? '—' },
     {
@@ -81,62 +98,67 @@ export default function PurchasesPage({ purchases, paginationLinks }: any) {
             );
         },
     },
-    { accessorKey: "purchase_date", header: "Purchase Date",
-        cell: ({ row }) => {
-        const date = new Date(row.getValue("purchase_date"));
-        return new Date(date).toISOString().split("T")[0];
-        },
-    },
     { accessorKey: 'total', header: 'Total' },
     {
-      accessorKey: 'actions',
-      header: () => <div className="text-center w-full">Actions</div>,
-      cell: ({ row }) => {
+    accessorKey: 'actions',
+    header: () => <div className="text-center w-full">Actions</div>,
+    cell: ({ row }) => {
         const purchase = row.original;
 
         const handleDelete = () => {
-          router.delete(route("purchases.destroy", { id: purchase.id }), {
+        router.delete(route("purchases.destroy", { id: purchase.id }), {
             onSuccess: () => toast.success("Purchase deleted successfully!"),
             onError: () => toast.error("An error occurred."),
-          });
+        });
         };
 
+        const isDeleteDisabled = purchase.sold_percentage > 0;
+
         return (
-          <div className="flex justify-center items-center">
+        <div className="flex justify-center items-center">
+            {/* View button */}
             <Button asChild variant="ghost" size="sm" className="mr-2">
-              <Link
-              href={route('purchases.show', purchase.id)}>
+            <Link href={route('purchases.show', purchase.id)}>
                 <Eye className="h-4 w-4" />
-              </Link>
+            </Link>
             </Button>
+
+            {/* Edit button */}
             <Button asChild variant="ghost" size="sm" className="mr-2">
-              <Link href={route('purchases.edit', purchase.id)}>
+            <Link href={route('purchases.edit', purchase.id)}>
                 <Edit className="h-4 w-4" />
-              </Link>
+            </Link>
             </Button>
+
+            {/* Delete button */}
             <AlertDialog>
-              <AlertDialogTrigger asChild>
-                <Button variant="ghost" size="sm">
-                  <Trash className="h-4 w-4" />
+            <AlertDialogTrigger asChild>
+                <Button
+                variant="ghost"
+                size="sm"
+                disabled={isDeleteDisabled} // ✅ Disable when sold_percentage > 0
+                >
+                <Trash className="h-4 w-4" />
                 </Button>
-              </AlertDialogTrigger>
-              <AlertDialogContent>
+            </AlertDialogTrigger>
+
+            <AlertDialogContent>
                 <AlertDialogHeader>
-                  <AlertDialogTitle>Confirm deletion</AlertDialogTitle>
-                  <AlertDialogDescription>
+                <AlertDialogTitle>Confirm deletion</AlertDialogTitle>
+                <AlertDialogDescription>
                     Are you sure you want to delete purchase #{purchase.id}? This action cannot be undone.
-                  </AlertDialogDescription>
+                </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
-                  <AlertDialogCancel>Cancel</AlertDialogCancel>
-                  <AlertDialogAction onClick={handleDelete}>Delete</AlertDialogAction>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction onClick={handleDelete}>Delete</AlertDialogAction>
                 </AlertDialogFooter>
-              </AlertDialogContent>
+            </AlertDialogContent>
             </AlertDialog>
-          </div>
+        </div>
         );
-      },
     },
+    }
   ];
 
   return (

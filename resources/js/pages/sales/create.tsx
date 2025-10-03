@@ -49,6 +49,7 @@ interface SaleItemForm {
   purchase_item_id: number;
   quantity: number;
   sale_price: number;
+  unit_price: number;
   subtotal: number;
   product_name: string;
   barcode_generated: string;
@@ -266,6 +267,7 @@ export default function SalesCreatePage({ investors, purchaseItems: initialPurch
       items: items.map(item => ({
         purchase_item_id: item.purchase_item_id,
         quantity: Number(item.quantity) || 0,
+        unit_price: Number(item.unit_price) || 0,
         sale_price: Number(item.sale_price) || 0,
         subtotal: Number(item.subtotal) || 0,
       }))
@@ -294,6 +296,7 @@ export default function SalesCreatePage({ investors, purchaseItems: initialPurch
       purchase_item_id: purchaseItem.id,
       quantity: 1,
       sale_price: Number(purchaseItem.sale_price) || 0,
+      unit_price: Number(purchaseItem.unit_price) || 0,
       subtotal: Number(purchaseItem.sale_price) || 0,
       product_name: purchaseItem.product_name,
       barcode_generated: purchaseItem.barcode_generated,
@@ -418,7 +421,7 @@ export default function SalesCreatePage({ investors, purchaseItems: initialPurch
 
       <div className="py-6 px-4 ">
         <div className="mb-8">
-          <h1 className="text-3xl font-bold tracking-tight text-gray-900">Create New Sale</h1>
+          <h1 className="text-3xl font-bold tracking-tight text-gray-900 dark:text-white">Create New Sale</h1>
           <p className="text-gray-600 mt-2">Add a new sale transaction to the system</p>
         </div>
 
@@ -510,237 +513,279 @@ export default function SalesCreatePage({ investors, purchaseItems: initialPurch
             </CardContent>
           </Card>
 
-          {/* Product Search - Only show if investor is selected */}
-          {data.investor_id ? (
-            <Card>
-              <CardHeader className="pb-4">
+            {/* Product Search - Only show if investor is selected */}
+            {data.investor_id ? (
+            <Card className=" border dark:border-zinc-800 shadow-sm">
+                <CardHeader className="pb-4">
                 <CardTitle className="text-xl flex items-center gap-2">
-                  <Search className="h-5 w-5" />
-                  Add Products
-                  {loadingProducts && (
+                    <Search className="h-5 w-5" />
+                    Add Products
+                    {loadingProducts && (
                     <Loader2 className="h-4 w-4 animate-spin" />
-                  )}
+                    )}
                 </CardTitle>
                 <CardDescription>
-                  {loadingProducts ? (
+                    {loadingProducts ? (
                     "Loading products..."
-                  ) : (
+                    ) : (
                     `Search for products by barcode or name. ${availablePurchaseItems.length} products available in stock for this investor.`
-                  )}
+                    )}
                 </CardDescription>
-              </CardHeader>
-              <CardContent>
+                </CardHeader>
+                <CardContent>
                 <div className="relative search-container">
-                  <div className="relative">
+                    <div className="relative">
                     <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                     <Input
-                      type="text"
-                      placeholder="Search by barcode, product name, or reference..."
-                      value={searchTerm}
-                      onChange={(e) => {
+                        type="text"
+                        placeholder="Search by barcode, product name, or reference..."
+                        value={searchTerm}
+                        onChange={(e) => {
                         setSearchTerm(e.target.value);
                         setShowSearchResults(true);
-                      }}
-                      onFocus={() => setShowSearchResults(true)}
-                      className="pl-10 pr-10"
-                      disabled={loadingProducts || availablePurchaseItems.length === 0}
+                        }}
+                        onFocus={() => setShowSearchResults(true)}
+                        className="pl-10 pr-10"
+                        disabled={loadingProducts || availablePurchaseItems.length === 0}
                     />
                     {searchTerm && (
-                      <button
+                        <button
                         type="button"
                         onClick={() => setSearchTerm("")}
                         className="absolute right-3 top-3 text-muted-foreground hover:text-foreground"
-                      >
-                        <X className="h-4 w-4" />
-                      </button>
-                    )}
-                  </div>
-
-                  {/* Search Results */}
-                  {showSearchResults && searchResults.length > 0 && (
-                    <div className="absolute z-50 w-full mt-2 bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-auto">
-                      {searchResults.map((item) => (
-                        <button
-                          key={item.id}
-                          type="button"
-                          className="w-full p-3 text-left border-b last:border-b-0 hover:bg-gray-50 transition-colors"
-                          onClick={() => addItemFromSearch(item)}
                         >
-                          <div className="font-medium text-sm">{item.product_name}</div>
-                          <div className="text-xs text-gray-600 mt-1">
-                            Barcode: {item.barcode_generated} |
-                            Available: {item.available_quantity} |
-                            Price: {formatCurrency(item.sale_price)} DZD
-                          </div>
+                        <X className="h-4 w-4" />
                         </button>
-                      ))}
+                    )}
                     </div>
-                  )}
 
-                  {/* No products available message */}
-                  {!loadingProducts && availablePurchaseItems.length === 0 && data.investor_id && (
-                    <div className="mt-2 p-3 bg-amber-50 border border-amber-200 rounded-md">
-                      <p className="text-amber-800 text-sm">
-                        No products available for this investor. Please select a different investor or ensure the investor has products in stock.
-                      </p>
+                    {/* Search Results */}
+                    {showSearchResults && searchResults.length > 0 && (
+                    <div className="absolute z-50 w-full mt-2 bg-white dark:bg-zinc-950 border border-gray-200 dark:border-zinc-800 rounded-lg shadow-lg max-h-60 overflow-auto">
+                        {searchResults.map((item) => (
+                        <button
+                            key={item.id}
+                            type="button"
+                            className="w-full p-3 text-left border-b last:border-b-0 hover:bg-gray-50 dark:hover:bg-zinc-900 transition-colors"
+                            onClick={() => addItemFromSearch(item)}
+                        >
+                            <div className="font-medium text-sm">{item.product_name}</div>
+                            <div className="text-xs text-gray-600 dark:text-gray-400 mt-1">
+                            Barcode: {item.barcode_generated} | Available: {item.available_quantity} | Price: {formatCurrency(item.sale_price)} DZD
+                            </div>
+                        </button>
+                        ))}
                     </div>
-                  )}
+                    )}
+
+                    {/* No products available message */}
+                    {!loadingProducts && availablePurchaseItems.length === 0 && data.investor_id && (
+                    <div className="mt-2 p-3 bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800 rounded-md">
+                        <p className="text-amber-800 dark:text-amber-200 text-sm">
+                        No products available for this investor. Please select a different investor or ensure the investor has products in stock.
+                        </p>
+                    </div>
+                    )}
                 </div>
-              </CardContent>
+                </CardContent>
             </Card>
-          ) : (
-            <Card>
-              <CardHeader className="pb-4">
+            ) : (
+            <Card className=" border dark:border-zinc-800 shadow-sm">
+                <CardHeader className="pb-4">
                 <CardTitle className="text-xl flex items-center gap-2">
-                  <Search className="h-5 w-5" />
-                  Add Products
+                    <Search className="h-5 w-5" />
+                    Add Products
                 </CardTitle>
                 <CardDescription>
-                  Please select an investor first to view available products.
+                    Please select an investor first to view available products.
                 </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="p-4 bg-gray-50 rounded-lg text-center">
-                  <AlertCircle className="h-8 w-8 mx-auto text-gray-400 mb-2" />
-                  <p className="text-gray-600">Select an investor to view available products</p>
+                </CardHeader>
+                <CardContent>
+                <div className="p-4 bg-gray-50 dark:bg-zinc-900 rounded-lg text-center">
+                    <AlertCircle className="h-8 w-8 mx-auto text-gray-400 dark:text-gray-500 mb-2" />
+                    <p className="text-gray-600 dark:text-gray-400">
+                    Select an investor to view available products
+                    </p>
                 </div>
-              </CardContent>
+                </CardContent>
             </Card>
-          )}
+            )}
+
 
           {/* Rest of the components remain the same */}
 
         {/* Sale Items */}
-        <Card>
-        <CardHeader className="pb-4">
-            <CardTitle className="text-xl flex items-center gap-2">
-            <ShoppingCart className="h-5 w-5 text-primary" />
-            Shopping Cart
-            </CardTitle>
-            <CardDescription>
-            {items.length} item(s) added to this sale
-            </CardDescription>
-        </CardHeader>
+            <Card className="border dark:border-zinc-800 shadow-sm">
+            <CardHeader className="pb-4">
+                <CardTitle className="text-xl flex items-center gap-2 text-zinc-900 dark:text-zinc-100">
+                <ShoppingCart className="h-5 w-5 text-zinc-700 dark:text-zinc-300" />
+                Shopping Cart
+                </CardTitle>
+                <CardDescription className="text-zinc-600 dark:text-zinc-400">
+                {items.length} item(s) added to this sale
+                </CardDescription>
+            </CardHeader>
 
-        <CardContent>
-            {items.length === 0 ? (
-            <div className="text-center py-10 text-muted-foreground border-2 border-dashed rounded-lg bg-gray-50">
-                <ShoppingCart className="h-12 w-12 mx-auto mb-4 opacity-40" />
-                <p className="font-medium text-gray-700">No items added yet</p>
-                <p className="text-sm mt-1">
-                {data.investor_id
-                    ? "Search for products above to add them to the sale."
-                    : "Select an investor first to add products."}
-                </p>
-            </div>
-            ) : (
-            <div className="space-y-4">
-                {items.map((item, index) => {
-                const availableQty = getAvailableQuantity(item.purchase_item_id);
-                const maxQuantity = Math.min(availableQty, 99999);
+            <CardContent>
+                {items.length === 0 ? (
+                <div className="text-center py-10 border-2 border-dashed rounded-lg bg-zinc-50 dark:bg-zinc-900 dark:border-zinc-700">
+                    <ShoppingCart className="h-12 w-12 mx-auto mb-4 opacity-40 text-zinc-500 dark:text-zinc-400" />
+                    <p className="font-medium text-zinc-700 dark:text-zinc-200">No items added yet</p>
+                    <p className="text-sm mt-1 text-zinc-600 dark:text-zinc-400">
+                    {data.investor_id
+                        ? "Search for products above to add them to the sale."
+                        : "Select an investor first to add products."}
+                    </p>
+                </div>
+                ) : (
+                <div className="space-y-4">
+                    {items.map((item, index) => {
+                    const availableQty = getAvailableQuantity(item.purchase_item_id);
+                    const maxQuantity = Math.min(availableQty, 99999);
 
-                return (
-                    <div
-                    key={index}
-                    className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-4 p-4 border rounded-lg bg-white shadow-sm"
-                    >
-                    {/* Product Info */}
-                    <div className="lg:col-span-4">
-                        <Label className="text-sm font-medium">
-                        Product <span className="text-muted-foreground">({item.barcode_generated})</span>
-                        </Label>
-                        <div className="mt-1 p-2 bg-gray-50 rounded-md border">
-                        <div className="font-medium text-sm">{item.product_name}</div>
-                        </div>
-                        {validationErrors[`items.${index}.purchase_item_id`] && (
-                        <p className="text-sm text-destructive mt-1 flex items-center gap-1">
-                            <AlertCircle className="h-3 w-3" />
-                            {validationErrors[`items.${index}.purchase_item_id`]}
-                        </p>
-                        )}
-                    </div>
-
-                    {/* Quantity */}
-                    <div className="lg:col-span-2">
-                        <Label htmlFor={`quantity-${index}`} className="required">
-                        Quantity
-                        </Label>
-                        <span className="text-xs text-gray-500"> (Available: {availableQty})</span>
-                        <Input
-                        id={`quantity-${index}`}
-                        type="number"
-                        min="1"
-                        max={maxQuantity}
-                        value={item.quantity}
-                        onChange={(e) => updateItem(index, "quantity", e.target.value)}
-                        className={cn(
-                            "mt-1",
-                            validationErrors[`items.${index}.quantity`] && "border-destructive"
-                        )}
-                        />
-                        {validationErrors[`items.${index}.quantity`] && (
-                        <p className="text-sm text-destructive mt-1 flex items-center gap-1">
-                            <AlertCircle className="h-3 w-3" />
-                            {validationErrors[`items.${index}.quantity`]}
-                        </p>
-                        )}
-                    </div>
-
-                    {/* Sale Price */}
-                    <div className="lg:col-span-2">
-                        <Label htmlFor={`price-${index}`} className="required">
-                        Unit Price (DZD)
-                        </Label>
-                        <Input
-                        id={`price-${index}`}
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        value={item.sale_price}
-                        onChange={(e) => updateItem(index, "sale_price", e.target.value)}
-                        className={cn(
-                            "mt-1",
-                            validationErrors[`items.${index}.sale_price`] && "border-destructive"
-                        )}
-                        />
-                        {validationErrors[`items.${index}.sale_price`] && (
-                        <p className="text-sm text-destructive mt-1 flex items-center gap-1">
-                            <AlertCircle className="h-3 w-3" />
-                            {validationErrors[`items.${index}.sale_price`]}
-                        </p>
-                        )}
-                    </div>
-
-                    {/* Subtotal */}
-                    <div className="lg:col-span-2">
-                        <Label>Subtotal (DZD)</Label>
-                        <Input
-                        value={formatCurrency(item.subtotal)}
-                        readOnly
-                        className="mt-1 bg-gray-100 font-medium"
-                        />
-                    </div>
-
-                    {/* Actions */}
-                    <div className="flex items-end justify-end lg:col-span-2">
-                        <Button
-                        type="button"
-                        variant="destructive"
-                        size="icon"
-                        onClick={() => removeItem(index)}
-                        className="h-9 w-9 mt-2 lg:mt-7"
-                        disabled={items.length <= 1}
+                    return (
+                        <div
+                        key={index}
+                        className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-14 gap-4 p-4 border rounded-lg bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-700 shadow-sm"
                         >
-                        <Trash className="h-4 w-4" />
-                        </Button>
-                    </div>
-                    </div>
-                );
-                })}
-            </div>
-            )}
-        </CardContent>
-        </Card>
+                        {/* Product Info */}
+                        <div className="lg:col-span-4">
+                            <Label className="text-sm font-medium text-zinc-700 dark:text-zinc-200">
+                            Product{" "}
+                            <span className="text-zinc-500 dark:text-zinc-400">
+                                ({item.barcode_generated})
+                            </span>
+                            </Label>
+                            <div className="mt-1 p-2 bg-zinc-50 dark:bg-zinc-800 rounded-md border border-zinc-200 dark:border-zinc-700">
+                            <div className="font-medium text-sm text-zinc-900 dark:text-zinc-100">
+                                {item.product_name}
+                            </div>
+                            </div>
+                            {validationErrors[`items.${index}.purchase_item_id`] && (
+                            <p className="text-sm text-destructive mt-1 flex items-center gap-1">
+                                <AlertCircle className="h-3 w-3" />
+                                {validationErrors[`items.${index}.purchase_item_id`]}
+                            </p>
+                            )}
+                        </div>
+
+                        {/* Quantity */}
+                        <div className="lg:col-span-2">
+                            <Label
+                            htmlFor={`quantity-${index}`}
+                            className="required text-zinc-700 dark:text-zinc-200"
+                            >
+                            Quantity
+                            </Label>
+                            <span className="text-xs text-zinc-500 dark:text-zinc-400">
+                            {" "}
+                            (Available: {availableQty})
+                            </span>
+                            <Input
+                            id={`quantity-${index}`}
+                            type="number"
+                            min="1"
+                            max={maxQuantity}
+                            value={item.quantity}
+                            onChange={(e) =>
+                                updateItem(index, "quantity", e.target.value)
+                            }
+                            className={cn(
+                                "mt-1 bg-white dark:bg-zinc-800 dark:text-zinc-100 border-zinc-300 dark:border-zinc-600",
+                                validationErrors[`items.${index}.quantity`] &&
+                                "border-destructive"
+                            )}
+                            />
+                            {validationErrors[`items.${index}.quantity`] && (
+                            <p className="text-sm text-destructive mt-1 flex items-center gap-1">
+                                <AlertCircle className="h-3 w-3" />
+                                {validationErrors[`items.${index}.quantity`]}
+                            </p>
+                            )}
+                        </div>
+
+
+                        {/* Purchase Price */}
+                        <div className="lg:col-span-2">
+                            <Label
+                            htmlFor={`price-${index}`}
+                            className="required text-zinc-700 dark:text-zinc-200"
+                            >
+                            Purchase Price (DZD)
+                            </Label>
+                            <Input
+                            readOnly
+                            id={`price-${index}`}
+                            type="number"
+                            value={item.unit_price}
+                            className={"mt-1 bg-red-600 text-white dark:bg-red-800 dark:text-zinc-100 border-zinc-300 dark:border-zinc-600 "}
+                            />
+                        </div>
+
+                        {/* Sale Price */}
+                        <div className="lg:col-span-2">
+                            <Label
+                            htmlFor={`price-${index}`}
+                            className="required text-zinc-700 dark:text-zinc-200"
+                            >
+                            Sale Price (DZD)
+                            </Label>
+                            <Input
+                            id={`price-${index}`}
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={item.sale_price}
+                            onChange={(e) =>
+                                updateItem(index, "sale_price", e.target.value)
+                            }
+                            className={cn(
+                                "mt-1 bg-white dark:bg-zinc-800 dark:text-zinc-100 border-zinc-300 dark:border-zinc-600",
+                                validationErrors[`items.${index}.sale_price`] &&
+                                "border-destructive"
+                            )}
+                            />
+                            {validationErrors[`items.${index}.sale_price`] && (
+                            <p className="text-sm text-destructive mt-1 flex items-center gap-1">
+                                <AlertCircle className="h-3 w-3" />
+                                {validationErrors[`items.${index}.sale_price`]}
+                            </p>
+                            )}
+                        </div>
+
+                        {/* Subtotal */}
+                        <div className="lg:col-span-2">
+                            <Label className="text-zinc-700 dark:text-zinc-200">
+                            Subtotal (DZD)
+                            </Label>
+                            <Input
+                            value={formatCurrency(item.subtotal)}
+                            readOnly
+                            className="mt-1 bg-zinc-100 dark:bg-zinc-800 dark:text-zinc-100 font-medium border-zinc-200 dark:border-zinc-700"
+                            />
+                        </div>
+
+                        {/* Actions */}
+                        <div className="flex items-end justify-end lg:col-span-2">
+                            <Button
+                            type="button"
+                            variant="destructive"
+                            size="icon"
+                            onClick={() => removeItem(index)}
+                            className="h-9 w-9 mt-2 lg:mt-7"
+                            disabled={items.length <= 1}
+                            >
+                            <Trash className="h-4 w-4" />
+                            </Button>
+                        </div>
+                        </div>
+                    );
+                    })}
+                </div>
+                )}
+            </CardContent>
+            </Card>
+
 
 
           {/* Financial Summary */}
@@ -845,7 +890,6 @@ export default function SalesCreatePage({ investors, purchaseItems: initialPurch
                 </>
               ) : (
                 <>
-                  <Plus className="h-4 w-4 mr-2" />
                   Create Sale
                 </>
               )}

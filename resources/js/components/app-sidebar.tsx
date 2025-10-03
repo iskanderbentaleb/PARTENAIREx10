@@ -41,7 +41,7 @@ const mainNavItems: NavItem[] = [
     },
         {
         title: 'Investors transactions',
-        href: '/payments/investors',
+        href: '/investor_transactions',
         icon: Wallet,
     },
 

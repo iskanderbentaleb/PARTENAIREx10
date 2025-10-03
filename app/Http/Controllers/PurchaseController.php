@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Investor;
+use App\Models\InvestorTransaction;
 use App\Models\Purchase;
 use App\Models\PurchaseItem;
 use App\Models\Supplier;
@@ -251,21 +252,19 @@ class PurchaseController extends Controller
                             ' (Invoice: ' . $validated['supplier_invoice_number'] . ')' : ''),
                 ]);
 
-            // Update investor balance
-            // $investor->decrement('current_balance', $validated['total']);
-
             // Create investor transaction record
-            $itemNames = array_column($validated['items'], 'product_name');
-            $mainItem = $itemNames[0];
-            $otherItemsCount = count($itemNames) - 1;
+            InvestorTransaction::create([
+                'date' => $validated['purchase_date'],
+                'type' => 'Out', // money going out from investor caise
+                'amount' => $validated['total'],
+                'note' => 'Payment for Purchase #' . $purchase->id .
+                            ($validated['supplier_invoice_number'] ?
+                            ' (Invoice: ' . $validated['supplier_invoice_number'] . ')' : ''),
+                'investor_id' => $investor->id,
+                'user_id' => auth()->id(),
+                'purchase_id' => $purchase->id,
+            ]);
 
-            // InvestorTransaction::create([
-            //     'investor_id' => $investor->id,
-            //     'type' => 'purchase',
-            //     'amount' => $validated['total'],
-            //     'description' => 'Purchase #' . $purchase->id . ' - ' . $mainItem .
-            //                     ($otherItemsCount > 0 ? ' and ' . $otherItemsCount . ' more items' : ''),
-            // ]);
         });
 
         return redirect()
@@ -306,8 +305,6 @@ class PurchaseController extends Controller
             'amount_paid' => $supplierTransaction ? $supplierTransaction->amount : 0, // Add amount_paid to the response
         ]);
     }
-
-
 
 
     /**
@@ -413,6 +410,35 @@ class PurchaseController extends Controller
                     'note' => 'Payment for Purchase #' . $purchase->id .
                             ($validated['supplier_invoice_number'] ?
                             ' (Invoice: ' . $validated['supplier_invoice_number'] . ')' : ''),
+                ]);
+            }
+
+
+            // Update the corresponding investor transaction
+            $investorTransaction = InvestorTransaction::where('purchase_id', $purchase->id)->first();
+
+            if ($investorTransaction) {
+                $investorTransaction->update([
+                    'date' => $validated['purchase_date'],
+                    'amount' => $validated['total'],
+                    'note' => 'Payment for Purchase #' . $purchase->id .
+                            ($validated['supplier_invoice_number'] ?
+                            ' (Invoice: ' . $validated['supplier_invoice_number'] . ')' : ''),
+                    'investor_id' => $validated['investor_id'],
+                    'purchase_id' => $purchase->id,
+                ]);
+            } else {
+                // Create investor transaction if it doesn't exist (for backward compatibility)
+                InvestorTransaction::create([
+                    'date' => $validated['purchase_date'],
+                    'type' => 'Out', // money going out from investor caise
+                    'amount' => $validated['total'],
+                    'note' => 'Payment for Purchase #' . $purchase->id .
+                                ($validated['supplier_invoice_number'] ?
+                                ' (Invoice: ' . $validated['supplier_invoice_number'] . ')' : ''),
+                    'investor_id' => $validated['investor_id'],
+                    'user_id' => auth()->id(),
+                    'purchase_id' => $purchase->id,
                 ]);
             }
 

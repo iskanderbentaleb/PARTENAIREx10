@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Investor;
+use App\Models\InvestorTransaction;
 use App\Models\PurchaseItem;
 use App\Models\Sale;
 use App\Models\saleItem;
@@ -175,6 +176,21 @@ class SaleController extends Controller
 
                 // Update purchase item's sold quantity
                 $purchaseItem->increment('quantity_selled', $itemData['quantity']);
+
+
+                // add investor payment transaction ( In caisse of sale )
+                InvestorTransaction::create([
+                    'date' => $request->sale_date,
+                    'type' => 'In', // money enters caisse of investor (profit + capital return)
+                    'amount' => $request->total,
+                    'note' => 'Payment for Sale #' . $sale->id .
+                            ($request->invoice_number ? ' (Invoice: ' . $request->invoice_number . ')' : ''),
+                    'investor_id' => $sale->investor_id,
+                    'user_id' => auth()->id(),
+                    'sale_id' => $sale->id,
+                ]);
+
+
             }
 
             return redirect()->route('sales')
@@ -346,6 +362,28 @@ class SaleController extends Controller
                 // Update purchase item's sold quantity
                 $purchaseItem->increment('quantity_selled', $itemData['quantity']);
             }
+
+
+            // Update or Create the corresponding investor transaction
+            $transaction = InvestorTransaction::where('sale_id', $sale->id)->first();
+
+            $transactionData = [
+                'investor_id' => $request->investor_id,
+                'user_id' => auth()->id(),
+                'date' => $request->sale_date,
+                'type' => 'In', // always "In" for sales
+                'amount' => $request->total,
+                'note' => 'Payment for Sale #' . $sale->id .
+                        ($request->invoice_number ? ' (Invoice: ' . $request->invoice_number . ')' : ''),
+                'sale_id' => $sale->id,
+            ];
+
+            if ($transaction) {
+                $transaction->update($transactionData);
+            } else {
+                InvestorTransaction::create($transactionData);
+            }
+
 
             return redirect()->route('sales')
                 ->with('success', 'Sale updated successfully!');

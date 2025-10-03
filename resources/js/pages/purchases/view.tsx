@@ -9,7 +9,7 @@ import {
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { ArrowLeft, FileText, Download, Copy } from "lucide-react";
+import { ArrowLeft, FileText, Download, Copy, Calendar, Package, BarChart3, ShoppingCart } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
@@ -59,6 +59,8 @@ interface Purchase {
   supplier: Supplier;
   investor: Investor;
   amount_paid: number;
+  created_at: string;
+  updated_at: string;
 }
 
 interface Props {
@@ -92,7 +94,15 @@ export default function PurchasesViewPage({ purchase }: Props) {
 
   const formatCurrency = (value: number) => `${value.toFixed(2)} ${processedPurchase.currency}`;
 
-  const formatDate = (dateString: string) => new Date(dateString).toLocaleDateString();
+    const formatDate = (dateString: string) => {
+        const date = new Date(dateString);
+        return date.toLocaleDateString('en-US', {
+            weekday: 'long',
+            day: 'numeric',
+            month: 'long',
+            year: 'numeric'
+        });
+    };
 
   // Per-item sold %
   const getSoldPercentage = (item: Item) =>
@@ -114,19 +124,21 @@ export default function PurchasesViewPage({ purchase }: Props) {
   const overallPercentage = totalQuantity ? Math.round((totalSold / totalQuantity) * 100) : 0;
   const overallColorClass = getColorClass(overallPercentage);
 
+  // Calculate additional metadata
+  const totalProducts = processedPurchase.items.length;
+  const totalValue = processedPurchase.items.reduce((sum, item) => sum + item.subtotal, 0);
+  const averagePrice = totalProducts > 0 ? totalValue / totalProducts : 0;
 
-    // Copy text function with toast
-    const copyToClipboard = (text: string) => {
+  // Copy text function with toast
+  const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text)
-        .then(() => {
+      .then(() => {
         toast.success(`"${text}" copied to clipboard!`);
-        })
-        .catch(() => {
+      })
+      .catch(() => {
         toast.error("Failed to copy text. Please try again.");
-        });
-    };
-
-
+      });
+  };
 
   return (
     <AppLayout
@@ -249,15 +261,15 @@ export default function PurchasesViewPage({ purchase }: Props) {
                     </div>
 
                     <div className="col-span-2 flex items-center gap-1">
-                        {item.barcode_generated && (
-                                <Button
-                                size="icon"
-                                variant="outline"
-                                onClick={() => copyToClipboard(item.barcode_generated)}
-                                >
-                                <Copy className="h-3 w-3" />
-                                </Button>
-                        )}
+                      {item.barcode_generated && (
+                        <Button
+                          size="icon"
+                          variant="outline"
+                          onClick={() => copyToClipboard(item.barcode_generated)}
+                        >
+                          <Copy className="h-3 w-3" />
+                        </Button>
+                      )}
                       <p className="text-sm text-muted-foreground truncate">
                         {item.barcode_generated || "N/A"}
                       </p>
@@ -353,6 +365,50 @@ export default function PurchasesViewPage({ purchase }: Props) {
           </Card>
         </div>
 
+        {/* Metadata */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-xl">Metadata</CardTitle>
+            <CardDescription>Additional information about this purchase</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label>Created Date</Label>
+                  <div className="flex items-center gap-2 p-2 border rounded-md bg-muted/50">
+                    <Calendar className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-sm">{formatDate(processedPurchase.created_at)}</span>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label>Last Updated</Label>
+                  <div className="flex items-center gap-2 p-2 border rounded-md bg-muted/50">
+                    <Calendar className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-sm">{formatDate(processedPurchase.updated_at)}</span>
+                  </div>
+                </div>
+              </div>
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label>Total Products</Label>
+                  <div className="flex items-center gap-2 p-2 border rounded-md bg-muted/50">
+                    <Package className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-sm font-medium">{totalProducts}</span>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label>Total Quantity</Label>
+                  <div className="flex items-center gap-2 p-2 border rounded-md bg-muted/50">
+                    <ShoppingCart className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-sm font-medium">{totalQuantity}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
         {/* File Attachment */}
         {processedPurchase.invoice_image && (
           <Card>
@@ -387,7 +443,7 @@ export default function PurchasesViewPage({ purchase }: Props) {
         {processedPurchase.note && (
           <Card>
             <CardHeader>
-              <CardTitle className="text-xl">Additional Information</CardTitle>
+              <CardTitle className="text-xl">Additional Information - NOTE</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="p-3 border rounded-md bg-muted/50">

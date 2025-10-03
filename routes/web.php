@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\InvestorController;
+use App\Http\Controllers\InvestorTransactionController;
 use App\Http\Controllers\PurchaseController;
 use App\Http\Controllers\SaleController;
 use App\Http\Controllers\SupplierController;
@@ -64,18 +65,19 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('sales/create', [SaleController::class, 'create'])->name('sales.create');
     Route::post('sales', [SaleController::class, 'store'])->name('sales.store');
     Route::get('api/investor/{investorId}/purchase-items', [SaleController::class, 'getInvestorPurchaseItems'])->name('api.investor.purchase-items');
-
-    // Route::get('purchases/view/{id}', [PurchaseController::class, 'show'])->name('purchases.show'); // Add this line
-    // Route::get('purchases/download-invoice/{purchase}', [PurchaseController::class, 'downloadInvoice'])->name('purchases.download-invoice');
-    // Route::delete('purchases/delete/{id}', [PurchaseController::class, 'destroy'])->name('purchases.destroy');
-
-
-    // Route::get('purchases/edit/{id}', [PurchaseController::class, 'edit'])->name('purchases.edit');
-    // Route::post('purchases/update/{id}', [PurchaseController::class, 'update'])->name('purchases.update');
+    Route::delete('sales/delete/{id}', [SaleController::class, 'destroy'])->name('sales.destroy');
+    Route::get('sales/{sale}/edit', [SaleController::class, 'edit'])->name('sales.edit');
+    Route::put('sales/{sale}', [SaleController::class, 'update'])->name('sales.update');
+    Route::get('sales/{sale}', [SaleController::class, 'show'])->name('sales.show');
 
 
-
-
+    // investor_Transactions routes
+    Route::get('investor_transactions', [InvestorTransactionController::class, 'index'])->name('investor_transactions');
+    Route::get('investor_transactions/create', [InvestorTransactionController::class, 'create'])->name('investor_transactions.create');
+    Route::post('investor_transactions', [InvestorTransactionController::class, 'store'])->name('investor_transactions.store');
+    Route::get('investor_transactions/edit/{id}', [InvestorTransactionController::class, 'edit'])->name('investor_transactions.edit');
+    Route::put('investor_transactions/{id}', action: [InvestorTransactionController::class, 'update'])->name('investor_transactions.update');
+    Route::delete('investor_transactions/delete/{id}', [InvestorTransactionController::class, 'destroy'])->name('investor_transactions.destroy');
 
 
 });

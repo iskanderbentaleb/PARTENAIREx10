@@ -35,5 +35,10 @@ class Investor extends Model
         return $this->hasMany(Sale::class);
     }
 
+    public function transactions()
+    {
+        return $this->hasMany(InvestorTransaction::class);
+    }
+
 
 }

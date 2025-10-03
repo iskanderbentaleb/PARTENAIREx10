@@ -1,7 +1,7 @@
 import { DataTable } from '../components/data-table';
 import { type ColumnDef } from '@tanstack/react-table';
 import { Button } from "@/components/ui/button";
-import { Trash, Edit, Eye } from "lucide-react";
+import { Trash, Edit, Eye, ArrowDownCircle, ArrowUpCircle } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -20,16 +20,17 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 
 // Breadcrumbs
 const breadcrumbs: BreadcrumbItem[] = [
-  { title: 'Supplier Transactions', href: '/supplier-transactions' },
+  { title: 'Investor Transactions', href: '/investor_transactions' },
 ];
 
-// SupplierTransaction type (based on Laravel model)
-type SupplierTransaction = {
+// InvestorTransaction type (based on Laravel model)
+type InvestorTransaction = {
   id: number;
   date: string;
+  type: "In" | "Out";
   amount: string;
   note: string;
-  supplier: {
+  investor: {
     id: number;
     name: string;
     email?: string;
@@ -39,21 +40,25 @@ type SupplierTransaction = {
     id: number;
     supplier_invoice_number?: string;
   } | null;
+  sale?: {
+    id: number;
+    invoice_number?: string;
+  } | null;
 };
 
-export default function SupplierTransactionsPage({ transactions, paginationLinks }: any) {
+export default function InvestorTransactionsPage({ transactions, paginationLinks }: any) {
 
-    const formatDate = (dateString: string) => {
-        const date = new Date(dateString);
-        return date.toLocaleDateString('en-US', {
-            weekday: 'long',
-            day: 'numeric',
-            month: 'long',
-            year: 'numeric'
-        });
-    };
+  const formatDate = (dateString: string) => {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-US', {
+      weekday: 'long',
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric'
+    });
+  };
 
-  const columns: ColumnDef<SupplierTransaction>[] = [
+  const columns: ColumnDef<InvestorTransaction>[] = [
     {
       accessorKey: "date",
       header: "Transaction Date",
@@ -62,18 +67,45 @@ export default function SupplierTransactionsPage({ transactions, paginationLinks
         return formatDate(date.toISOString());
       },
     },
+    {
+    accessorKey: "type",
+    header: "Transaction Type",
+    cell: ({ row }) => {
+        const type = row.original.type;
+        const isIn = type === "In";
+
+        return (
+        <div className="flex items-center gap-2">
+            {isIn ? (
+            <ArrowDownCircle className="h-5 w-5 text-green-600" />
+            ) : (
+            <ArrowUpCircle className="h-5 w-5 text-red-600" />
+            )}
+            <span
+            className={`px-2 py-1 rounded-full text-xs font-semibold ${
+                isIn
+                ? "bg-green-100 text-green-700"
+                : "bg-red-100 text-red-700"
+            }`}
+            >
+            {isIn ? "In - دخول أموال للخزينة" : "Out - خروج أموال من الخزينة"}
+            </span>
+        </div>
+        );
+    },
+    },
     { accessorKey: 'amount', header: 'Amount' },
     { accessorKey: 'note', header: 'Note' },
     {
-      accessorKey: 'supplier',
-      header: 'Supplier',
+      accessorKey: 'investor',
+      header: 'Investor',
       cell: ({ row }) => {
-        const supplier = row.original.supplier;
+        const investor = row.original.investor;
         return (
           <div>
-            <div className="font-medium">{supplier?.name}</div>
+            <div className="font-medium">{investor?.name}</div>
             <div className="text-xs text-muted-foreground">
-              {supplier?.phone || ''} {supplier?.email ? `| ${supplier.email}` : ''}
+              {investor?.phone || ''} {investor?.email ? `| ${investor.email}` : ''}
             </div>
           </div>
         );
@@ -97,25 +129,41 @@ export default function SupplierTransactionsPage({ transactions, paginationLinks
       },
     },
     {
+      accessorKey: 'sale',
+      header: 'Sale',
+      cell: ({ row }) => {
+        const sale = row.original.sale;
+        return sale ? (
+          <Link
+            href={`/sales/${sale.id}`}
+            className="text-blue-600 hover:underline"
+          >
+            #{sale.id} {sale.invoice_number ? `- ${sale.invoice_number}` : ''}
+          </Link>
+        ) : (
+          <span className="text-gray-400">—</span>
+        );
+      },
+    },
+    {
       accessorKey: 'actions',
       header: () => <div className="text-center w-full">Actions</div>,
       cell: ({ row }) => {
         const transaction = row.original;
-        const isLinkedToPurchase = transaction.purchase !== null;
+        const isLinked = transaction.purchase !== null || transaction.sale !== null;
 
         const handleDelete = () => {
-          if (isLinkedToPurchase) return; // Prevent deletion if linked to purchase
+          if (isLinked) return;
 
-          router.delete(route("supplier_transactions.destroy", { id: transaction.id }), {
-            onSuccess: () => toast.success("Investor deleted successfully!"),
+          router.delete(route("investor_transactions.destroy", { id: transaction.id }), {
+            onSuccess: () => toast.success("Transaction deleted successfully!"),
             onError: () => toast.error("An error occurred."),
           });
         };
 
         return (
           <div className="flex justify-center items-center space-x-1">
-            {isLinkedToPurchase ? (
-              // View only mode for transactions linked to purchases
+            {isLinked ? (
               <TooltipProvider>
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -124,17 +172,16 @@ export default function SupplierTransactionsPage({ transactions, paginationLinks
                     </Button>
                   </TooltipTrigger>
                   <TooltipContent>
-                    <p>View only (linked to purchase)</p>
+                    <p>View only (linked to purchase/sale)</p>
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
             ) : (
-              // Edit button - only show for transactions not linked to purchases
               <TooltipProvider>
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <Button asChild variant="ghost" size="sm">
-                      <Link href={`/supplier_transactions/edit/${transaction.id}`}>
+                      <Link href={`/investor_transactions/edit/${transaction.id}`}>
                         <Edit className="h-4 w-4" />
                       </Link>
                     </Button>
@@ -146,8 +193,7 @@ export default function SupplierTransactionsPage({ transactions, paginationLinks
               </TooltipProvider>
             )}
 
-            {isLinkedToPurchase ? (
-              // Disabled delete button with tooltip for linked transactions
+            {isLinked ? (
               <TooltipProvider>
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -156,12 +202,11 @@ export default function SupplierTransactionsPage({ transactions, paginationLinks
                     </Button>
                   </TooltipTrigger>
                   <TooltipContent>
-                    <p>Cannot delete (linked to purchase)</p>
+                    <p>Cannot delete (linked to purchase/sale)</p>
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
             ) : (
-              // Delete button - only show for transactions not linked to purchases
               <AlertDialog>
                 <AlertDialogTrigger asChild>
                   <Button variant="ghost" size="sm">
@@ -193,17 +238,17 @@ export default function SupplierTransactionsPage({ transactions, paginationLinks
       breadcrumbs={breadcrumbs}
       actions={
         <Button asChild variant="outline" size="sm">
-          <Link href="/supplier_transactions/create">Create new Transaction</Link>
+          <Link href="/investor_transactions/create">Create new Transaction</Link>
         </Button>
       }
     >
-      <Head title="Supplier Transactions" />
+      <Head title="Investor Transactions" />
       <div className="flex flex-1 flex-col gap-4 rounded-xl p-4 overflow-x-auto">
         <DataTable
           columns={columns}
           data={transactions.data}
           paginationLinks={paginationLinks}
-          searchRoute="supplier_transactions" // ✅ Laravel route
+          searchRoute="investor_transactions"
         />
       </div>
     </AppLayout>

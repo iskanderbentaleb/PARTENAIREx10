@@ -9,7 +9,7 @@ import {
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { ArrowLeft, FileText, Download, Copy } from "lucide-react";
+import { ArrowLeft, FileText, User, Calendar, Tag, ShoppingCart, DollarSign, Copy } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
@@ -18,195 +18,163 @@ type BreadcrumbItem = {
   href: string;
 };
 
-interface Supplier {
-  id: number;
-  name: string;
-}
-
 interface Investor {
   id: number;
   name: string;
-  current_balance: number;
 }
 
-interface Item {
+interface PurchaseItem {
+  id: number;
   product_name: string;
   barcode_prinsipal: string;
   barcode_generated: string;
+  unit_price: number;
   quantity: number;
   quantity_selled: number;
-  unit_price: number;
   subtotal: number;
   sale_price: number;
+  purchase_id: number;
+  created_at: string;
+  updated_at: string;
+  sold_percentage: number;
 }
 
-interface Purchase {
+interface SaleItem {
   id: number;
-  supplier_id: number;
-  investor_id: number;
-  supplier_invoice_number: string;
-  purchase_date: string;
+  purchase_item_id: number;
+  quantity: number;
+  sale_price: number;
+  subtotal: number;
+  purchase_item?: PurchaseItem;
+  purchaseItem?: PurchaseItem;
+}
+
+interface Sale {
+  id: number;
+  invoice_number: string;
+  sale_date: string;
   subtotal: number;
   discount_reason: string;
   discount_value: number;
-  shipping_note: string;
-  shipping_value: number;
   total: number;
   currency: string;
   note: string;
-  invoice_image: string | null;
-  items: Item[];
-  supplier: Supplier;
+  created_at: string;
+  updated_at: string;
   investor: Investor;
-  amount_paid: number;
+  items: SaleItem[];
+  total_items?: number;
+  // REMOVED: total_profit and profit_calculation
 }
 
 interface Props {
-  purchase: Purchase;
+  sale: Sale;
 }
 
-export default function PurchasesViewPage({ purchase }: Props) {
+export default function SalesViewPage({ sale }: Props) {
   const breadcrumbs: BreadcrumbItem[] = [
-    { title: "Purchases", href: "/purchases" },
-    { title: `View #${purchase.id}`, href: `/purchases/${purchase.id}` },
+    { title: "Sales", href: "/sales" },
+    { title: `View #${sale.id}`, href: `/sales/${sale.id}` },
   ];
 
-  // Process numeric values
-  const processedPurchase = {
-    ...purchase,
-    subtotal: Number(purchase.subtotal),
-    discount_value: Number(purchase.discount_value),
-    shipping_value: Number(purchase.shipping_value),
-    total: Number(purchase.total),
-    amount_paid: Number(purchase.amount_paid),
-    items: purchase.items.map((item) => ({
-      ...item,
-      quantity: Number(item.quantity),
-      unit_price: Number(item.unit_price),
-      subtotal: Number(item.subtotal),
-      sale_price: Number(item.sale_price),
-    })),
+  const formatCurrency = (value: number | string | null | undefined) => {
+    const num = Number(value);
+    if (isNaN(num)) return "0.00 DZD";
+    return `${num.toFixed(2)} DZD`;
   };
 
-  const amountRemaining = processedPurchase.total - processedPurchase.amount_paid;
-
-  const formatCurrency = (value: number) => `${value.toFixed(2)} ${processedPurchase.currency}`;
-
-  const formatDate = (dateString: string) => new Date(dateString).toLocaleDateString();
-
-  // Per-item sold %
-  const getSoldPercentage = (item: Item) =>
-    !item.quantity || item.quantity <= 0
-      ? 0
-      : Math.min(100, Math.round((item.quantity_selled / item.quantity) * 100));
-
-  // Progress color
-  const getColorClass = (percentage: number) => {
-    if (percentage < 30) return "bg-red-500";
-    if (percentage < 70) return "bg-amber-500";
-    if (percentage < 90) return "bg-yellow-500";
-    return "bg-green-500";
+  const formatDate = (dateString: string) => {
+    const date = new Date(dateString);
+    return date.toISOString().split("T")[0];
   };
 
-  // Overall sold percentage
-  const totalQuantity = processedPurchase.items.reduce((sum, item) => sum + item.quantity, 0);
-  const totalSold = processedPurchase.items.reduce((sum, item) => sum + item.quantity_selled, 0);
-  const overallPercentage = totalQuantity ? Math.round((totalSold / totalQuantity) * 100) : 0;
-  const overallColorClass = getColorClass(overallPercentage);
-
-
-    // Copy text function with toast
-    const copyToClipboard = (text: string) => {
+  const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text)
-        .then(() => {
+      .then(() => {
         toast.success(`"${text}" copied to clipboard!`);
-        })
-        .catch(() => {
+      })
+      .catch(() => {
         toast.error("Failed to copy text. Please try again.");
-        });
-    };
+      });
+  };
 
+  // Safe data access function
+  const getPurchaseItemData = (item: SaleItem) => {
+    const purchaseItem = item.purchaseItem || item.purchase_item;
 
+    if (!purchaseItem) {
+      console.warn('No purchase item found for sale item:', item.id);
+      return {
+        product_name: 'Unknown Product',
+        barcode_prinsipal: 'N/A',
+        barcode_generated: 'N/A',
+        unit_price: 0
+      };
+    }
+
+    return purchaseItem;
+  };
 
   return (
     <AppLayout
       breadcrumbs={breadcrumbs}
       actions={
         <Button asChild variant="outline" size="sm">
-          <Link href="/purchases">
+          <Link href="/sales">
             <ArrowLeft className="h-4 w-4 mr-2" />
-            Back to Purchases
+            Back to Sales
           </Link>
         </Button>
       }
     >
-      <Head title={`Purchase #${processedPurchase.id}`} />
+      <Head title={`Sale #${sale.id}`} />
 
       <div className="py-6 px-4 md:px-8 space-y-10">
         {/* Page header */}
         <div className="flex flex-col gap-2 mb-6">
           <div className="flex justify-between items-center">
-            <h1 className="text-3xl font-bold tracking-tight">Purchase Details</h1>
-            <span className="text-sm text-muted-foreground">#{processedPurchase.id}</span>
+            <h1 className="text-3xl font-bold tracking-tight">Sale Details #{sale.id}</h1>
           </div>
           <p className="text-muted-foreground">
-            Overview of purchase information and sold quantities
+            Overview of sale information and transaction details
           </p>
         </div>
 
-        {/* Overall Sold Percentage */}
+        {/* Sale Info */}
         <Card>
           <CardHeader>
-            <CardTitle className="text-xl">Overall Sold Quantity</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center gap-3">
-              <div className="flex-1 h-3 bg-secondary rounded-full overflow-hidden">
-                <div
-                  className={cn("h-full transition-all rounded-full", overallColorClass)}
-                  style={{ width: `${overallPercentage}%` }}
-                />
-              </div>
-              <span className="text-sm font-medium text-muted-foreground">
-                {totalSold}/{totalQuantity} ({overallPercentage}%)
-              </span>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Purchase Info */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-xl">Purchase Information</CardTitle>
-            <CardDescription>Basic details of this purchase</CardDescription>
+            <CardTitle className="text-xl">Sale Information</CardTitle>
+            <CardDescription>Basic details of this sale transaction</CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-              <div className="space-y-2">
-                <Label>Supplier</Label>
-                <div className="p-2 border rounded-md bg-muted/50">
-                  <p className="text-sm">{processedPurchase.supplier.name}</p>
-                </div>
-              </div>
-
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div className="space-y-2">
                 <Label>Investor</Label>
                 <div className="p-2 border rounded-md bg-muted/50">
-                  <p className="text-sm">{processedPurchase.investor.name}</p>
+                  <div className="flex items-center gap-2">
+                    <User className="h-4 w-4 text-muted-foreground" />
+                    <p className="text-sm">{sale.investor.name}</p>
+                  </div>
                 </div>
               </div>
 
               <div className="space-y-2">
-                <Label>Supplier Invoice Number</Label>
+                <Label>Invoice Number</Label>
                 <div className="p-2 border rounded-md bg-muted/50">
-                  <p className="text-sm">{processedPurchase.supplier_invoice_number || "N/A"}</p>
+                  <div className="flex items-center gap-2">
+                    <Tag className="h-4 w-4 text-muted-foreground" />
+                    <p className="text-sm">{sale.invoice_number || "N/A"}</p>
+                  </div>
                 </div>
               </div>
 
               <div className="space-y-2">
-                <Label>Purchase Date</Label>
+                <Label>Sale Date</Label>
                 <div className="p-2 border rounded-md bg-muted/50">
-                  <p className="text-sm">{formatDate(processedPurchase.purchase_date)}</p>
+                  <div className="flex items-center gap-2">
+                    <Calendar className="h-4 w-4 text-muted-foreground" />
+                    <p className="text-sm">{formatDate(sale.sale_date)}</p>
+                  </div>
                 </div>
               </div>
             </div>
@@ -216,70 +184,64 @@ export default function PurchasesViewPage({ purchase }: Props) {
         {/* Items */}
         <Card>
           <CardHeader>
-            <CardTitle className="text-xl">Purchase Items</CardTitle>
-            <CardDescription>Products included in this purchase</CardDescription>
+            <CardTitle className="text-xl">Sale Items</CardTitle>
+            <CardDescription>Products sold in this transaction</CardDescription>
           </CardHeader>
 
           <CardContent className="text-sm">
             <div className="rounded-md border overflow-x-auto">
-              <div className="grid grid-cols-16 gap-4 p-3 font-medium border-b text-xs">
+              {/* REMOVED: Profit column from header */}
+              <div className="grid grid-cols-14 gap-4 p-3 font-medium border-b text-xs">
                 <div className="col-span-3">Product</div>
                 <div className="col-span-2">Barcode/Ref</div>
                 <div className="col-span-2">Generated Barcode/Ref</div>
-                <div className="col-span-1 text-center">Qty</div>
-                <div className="col-span-2 text-center">Qty Sold (%)</div>
+                <div className="col-span-1 text-center">Qty Sold</div>
                 <div className="col-span-2 text-right">Purchase Price</div>
                 <div className="col-span-2 text-right">Sale Price</div>
                 <div className="col-span-2 text-right">Subtotal</div>
               </div>
 
-              {processedPurchase.items.map((item, index) => {
-                const percentage = getSoldPercentage(item);
-                const colorClass = getColorClass(percentage);
+              {sale.items.map((item, index) => {
+                const purchaseItem = getPurchaseItemData(item);
 
                 return (
                   <div
-                    key={index}
-                    className="grid grid-cols-16 gap-4 p-3 border-b last:border-b-0 items-center"
+                    key={item.id}
+                    className="grid grid-cols-14 gap-4 p-3 border-b last:border-b-0 items-center"
                   >
-                    <div className="col-span-3 font-medium">{item.product_name}</div>
+                    <div className="col-span-3 font-medium">{purchaseItem.product_name}</div>
 
                     <div className="col-span-2 text-sm text-muted-foreground">
-                      {item.barcode_prinsipal || "N/A"}
+                      {purchaseItem.barcode_prinsipal}
                     </div>
 
                     <div className="col-span-2 flex items-center gap-1">
-                        {item.barcode_generated && (
-                                <Button
-                                size="icon"
-                                variant="outline"
-                                onClick={() => copyToClipboard(item.barcode_generated)}
-                                >
-                                <Copy className="h-3 w-3" />
-                                </Button>
-                        )}
+                      {purchaseItem.barcode_generated && purchaseItem.barcode_generated !== "N/A" && (
+                        <Button
+                          size="icon"
+                          variant="outline"
+                          onClick={() => copyToClipboard(purchaseItem.barcode_generated)}
+                        >
+                          <Copy className="h-3 w-3" />
+                        </Button>
+                      )}
                       <p className="text-sm text-muted-foreground truncate">
-                        {item.barcode_generated || "N/A"}
+                        {purchaseItem.barcode_generated}
                       </p>
                     </div>
 
                     <div className="col-span-1 text-center">{item.quantity}</div>
 
-                    <div className="col-span-2 flex flex-col items-center">
-                      <p className="text-xs font-medium">{item.quantity_selled}</p>
-                      <div className="w-full h-2 bg-secondary rounded-full overflow-hidden mt-1">
-                        <div
-                          className={cn("h-full transition-all rounded-full", colorClass)}
-                          style={{ width: `${percentage}%` }}
-                        />
-                      </div>
-                      <span className="text-xs text-muted-foreground mt-1">
-                        {percentage}%
-                      </span>
+                    <div className="col-span-2 text-right">
+                      <p className="text-sm text-red-600">{formatCurrency(purchaseItem.unit_price)}</p>
                     </div>
 
-                    <div className="col-span-2 text-right">{formatCurrency(item.unit_price)}</div>
-                    <div className="col-span-2 text-right">{formatCurrency(item.sale_price)}</div>
+                    <div className="col-span-2 text-right">
+                      <p className="text-sm font-medium">{formatCurrency(item.sale_price)}</p>
+                    </div>
+
+                    {/* REMOVED: Profit column completely */}
+
                     <div className="col-span-2 text-right font-medium">{formatCurrency(item.subtotal)}</div>
                   </div>
                 );
@@ -292,106 +254,92 @@ export default function PurchasesViewPage({ purchase }: Props) {
         <div className="flex justify-end">
           <Card className="w-full md:w-1/2">
             <CardHeader>
-              <CardTitle className="text-xl">Financial Details</CardTitle>
+              <CardTitle className="text-xl">Financial Summary</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid gap-4">
                 <div className="flex justify-between items-center">
                   <Label>Subtotal</Label>
-                  <p className="font-semibold">{formatCurrency(processedPurchase.subtotal)}</p>
+                  <p className="font-semibold">{formatCurrency(sale.subtotal)}</p>
                 </div>
 
-                {processedPurchase.discount_value > 0 && (
+                {sale.discount_value > 0 && (
                   <div className="flex justify-between items-center">
                     <div>
                       <Label>Discount</Label>
-                      {processedPurchase.discount_reason && (
-                        <p className="text-xs text-muted-foreground">{processedPurchase.discount_reason}</p>
+                      {sale.discount_reason && (
+                        <p className="text-xs text-muted-foreground">{sale.discount_reason}</p>
                       )}
                     </div>
                     <p className="font-semibold text-destructive">
-                      -{formatCurrency(processedPurchase.discount_value)}
+                      -{formatCurrency(sale.discount_value)}
                     </p>
-                  </div>
-                )}
-
-                {processedPurchase.shipping_value > 0 && (
-                  <div className="flex justify-between items-center">
-                    <div>
-                      <Label>Shipping</Label>
-                      {processedPurchase.shipping_note && (
-                        <p className="text-xs text-muted-foreground">{processedPurchase.shipping_note}</p>
-                      )}
-                    </div>
-                    <p className="font-semibold">+{formatCurrency(processedPurchase.shipping_value)}</p>
                   </div>
                 )}
 
                 <div className="flex justify-between items-center pt-4 border-t">
                   <Label className="text-base">Total Amount</Label>
-                  <p className="text-lg font-bold">{formatCurrency(processedPurchase.total)}</p>
+                  <p className="text-lg font-bold">{formatCurrency(sale.total)}</p>
                 </div>
 
-                <div className="flex justify-between items-center">
-                  <Label>Amount Paid</Label>
-                  <p className="font-semibold">{formatCurrency(processedPurchase.amount_paid)}</p>
-                </div>
-
-                <div className="flex justify-between items-center">
-                  <Label>Amount Remaining</Label>
-                  <p
-                    className={cn(
-                      "font-semibold",
-                      amountRemaining > 0 ? "text-amber-600" : "text-green-600"
-                    )}
-                  >
-                    {formatCurrency(amountRemaining)}
-                  </p>
-                </div>
+                {/* REMOVED: Entire profit section from financial summary */}
               </div>
             </CardContent>
           </Card>
         </div>
 
-        {/* File Attachment */}
-        {processedPurchase.invoice_image && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-xl">Invoice Attachment</CardTitle>
-              <CardDescription>Document associated with this purchase</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="flex items-center gap-3 p-3 border rounded-md">
-                <FileText className="h-5 w-5 text-muted-foreground" />
-                <div className="flex-1">
-                  <p className="text-sm font-medium">Invoice File</p>
-                  <p className="text-xs text-muted-foreground">
-                    {processedPurchase.invoice_image.split("/").pop()}
-                  </p>
+        {/* Metadata */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-xl">Metadata</CardTitle>
+            <CardDescription>Additional information about this sale</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label>Created Date</Label>
+                  <div className="flex items-center gap-2 p-2 border rounded-md bg-muted/50">
+                    <Calendar className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-sm">{formatDate(sale.created_at)}</span>
+                  </div>
                 </div>
-                <Button variant="outline" size="sm" asChild>
-                  <a
-                    href={`/storage/${processedPurchase.invoice_image}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    <Download className="h-4 w-4 mr-2" />
-                    Download
-                  </a>
-                </Button>
+                <div className="space-y-2">
+                  <Label>Last Updated</Label>
+                  <div className="flex items-center gap-2 p-2 border rounded-md bg-muted/50">
+                    <Calendar className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-sm">{formatDate(sale.updated_at)}</span>
+                  </div>
+                </div>
               </div>
-            </CardContent>
-          </Card>
-        )}
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label>Total Items Sold</Label>
+                  <div className="flex items-center gap-2 p-2 border rounded-md bg-muted/50">
+                    <ShoppingCart className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-sm font-medium">{sale.total_items}</span>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label>Unique Products</Label>
+                  <div className="flex items-center gap-2 p-2 border rounded-md bg-muted/50">
+                    <FileText className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-sm font-medium">{sale.items.length}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
 
-        {processedPurchase.note && (
+        {sale.note && (
           <Card>
             <CardHeader>
-              <CardTitle className="text-xl">Additional Information</CardTitle>
+              <CardTitle className="text-xl">Additional Information - NOTE </CardTitle>
             </CardHeader>
             <CardContent>
               <div className="p-3 border rounded-md bg-muted/50">
-                <p className="text-sm whitespace-pre-wrap">{processedPurchase.note}</p>
+                <p className="text-sm whitespace-pre-wrap">{sale.note}</p>
               </div>
             </CardContent>
           </Card>

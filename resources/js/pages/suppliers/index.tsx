@@ -178,14 +178,14 @@ export default function SuppliersPage({ suppliers, paginationLinks, totals }: an
         </div>
       </div>
 
-      <div className="flex flex-1 flex-col gap-4 rounded-xl p-4 overflow-x-auto">
-        <DataTable
-          columns={columns}
-          data={suppliers.data}
-          paginationLinks={paginationLinks}
-          searchRoute="suppliers"
-        />
-      </div>
+        <div className="flex flex-1 flex-col gap-4 rounded-xl p-4 overflow-x-auto">
+            <DataTable
+            columns={columns}
+            data={suppliers.data}
+            paginationLinks={paginationLinks}
+            searchRoute="suppliers"
+            />
+        </div>
     </AppLayout>
   );
 }

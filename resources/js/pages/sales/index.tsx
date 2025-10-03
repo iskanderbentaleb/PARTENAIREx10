@@ -53,11 +53,25 @@ interface SalesPageProps {
 }
 
 export default function SalesPage({ sales, paginationLinks }: SalesPageProps) {
+
+
+    const formatDate = (dateString: string) => {
+        const date = new Date(dateString);
+        return date.toLocaleDateString('en-US', {
+            weekday: 'long',
+            day: 'numeric',
+            month: 'long',
+            year: 'numeric'
+        });
+    };
+
+
+
   const columns: ColumnDef<Sale>[] = [
     {
       accessorKey: 'id',
       header: 'ID',
-      cell: ({ row }) => <div className="text-center">{row.original.id}</div>
+      cell: ({ row }) => <div className="">{row.original.id}</div>
     },
     {
       accessorKey: 'invoice_number',
@@ -65,17 +79,17 @@ export default function SalesPage({ sales, paginationLinks }: SalesPageProps) {
       cell: ({ row }) => row.original.invoice_number || '—'
     },
     {
-      accessorKey: 'investor.name',
-      header: 'Investor',
-      cell: ({ row }) => row.original.investor?.name ?? '—'
-    },
-    {
       accessorKey: "sale_date",
       header: "Sale Date",
       cell: ({ row }) => {
         const date = new Date(row.getValue("sale_date"));
-        return new Date(date).toISOString().split("T")[0];
+        return formatDate(date.toISOString());
       },
+    },
+    {
+      accessorKey: 'investor.name',
+      header: 'Investor',
+      cell: ({ row }) => row.original.investor?.name ?? '—'
     },
     {
       accessorKey: 'total',
@@ -104,19 +118,13 @@ export default function SalesPage({ sales, paginationLinks }: SalesPageProps) {
         return (
           <div className="flex justify-center items-center space-x-1">
             <Button asChild variant="ghost" size="sm">
-              <Link href={
-                // route('sales.show', sale.id)
-                ''
-                }
-                >
+              <Link href={route('sales.show', sale.id)}>
                 <Eye className="h-4 w-4" />
                 <span className="sr-only">View</span>
               </Link>
             </Button>
             <Button asChild variant="ghost" size="sm">
-              <Link href={''
-                // route('sales.edit', sale.id)
-                }>
+              <Link href={route('sales.edit', sale.id)}>
                 <Edit className="h-4 w-4" />
                 <span className="sr-only">Edit</span>
               </Link>
@@ -141,7 +149,7 @@ export default function SalesPage({ sales, paginationLinks }: SalesPageProps) {
                   <AlertDialogCancel>Cancel</AlertDialogCancel>
                   <AlertDialogAction
                     onClick={handleDelete}
-                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                    className="bg-destructive text-destructive-foreground text-white hover:bg-destructive/90"
                   >
                     Delete
                   </AlertDialogAction>

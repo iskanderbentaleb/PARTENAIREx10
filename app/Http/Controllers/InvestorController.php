@@ -20,20 +20,88 @@ class InvestorController extends Controller
             $searchTerm = '%' . $request->search . '%';
             $query->where(function ($q) use ($searchTerm) {
                 $q->where('name', 'like', $searchTerm)
-                ->orWhere('email', 'like', $searchTerm)
-                ->orWhere('phone', 'like', $searchTerm)
-                ->orWhere('address', 'like', $searchTerm)
-                ->orWhere('notes', 'like', $searchTerm);
+                    ->orWhere('email', 'like', $searchTerm)
+                    ->orWhere('phone', 'like', $searchTerm)
+                    ->orWhere('address', 'like', $searchTerm)
+                    ->orWhere('notes', 'like', $searchTerm);
             });
         }
 
-        // Keep pagination at 30
-        $investors = $query->latest("name")->paginate(50);
+        $investors = $query
+            ->with(['transactions', 'purchases', 'sales'])
+            ->latest("name")
+            ->paginate(50);
+
+        // Calculate balances for each investor
+        $investors->getCollection()->transform(function ($investor) {
+            // ALL transactions (both manual and automatic from purchases/sales)
+            $allIn = $investor->transactions->where('type', 'In')->sum('amount');
+            $allOut = $investor->transactions->where('type', 'Out')->sum('amount');
+
+            // Purchase and sales totals (for profit calculation and tracking)
+            $totalPurchases = $investor->purchases->sum('total');
+            $totalSales = $investor->sales->sum('total');
+
+            // Calculate profit (sales revenue - purchase cost)
+            $profit = $totalSales - $totalPurchases;
+
+            // Available cash = Total In - Total Out (from ALL transactions)
+            $availableCash = $allIn - $allOut;
+
+            // Cash in process: Purchases that haven't been sold yet
+            $cashInProcess = max($totalPurchases - $totalSales, 0);
+
+            // Total capital = Available cash + Cash in process
+            $totalCapital = $availableCash + $cashInProcess;
+
+            // Attach values
+            $investor->available_cash = $availableCash;
+            $investor->cash_in_process = $cashInProcess;
+            $investor->total_capital = $totalCapital;
+            $investor->profit = $profit;
+            $investor->total_invested = $allIn;
+            $investor->total_withdrawn = $allOut;
+
+            return $investor;
+        });
+
+        // Calculate totals for ALL investors (not just current page)
+        $allInvestors = Investor::where('user_id', Auth::id())
+            ->with(['transactions', 'purchases', 'sales'])
+            ->get();
+
+        $totals = $allInvestors->reduce(function ($carry, $investor) {
+            $allIn = $investor->transactions->where('type', 'In')->sum('amount');
+            $allOut = $investor->transactions->where('type', 'Out')->sum('amount');
+            $totalPurchases = $investor->purchases->sum('total');
+            $totalSales = $investor->sales->sum('total');
+            $profit = $totalSales - $totalPurchases;
+            $availableCash = $allIn - $allOut;
+            $cashInProcess = max($totalPurchases - $totalSales, 0);
+            $totalCapital = $availableCash + $cashInProcess;
+
+            $carry['totalCapital'] += $totalCapital;
+            $carry['availableCash'] += $availableCash;
+            $carry['cashInProcess'] += $cashInProcess;
+            $carry['profit'] += $profit;
+            $carry['totalInvested'] += $allIn;
+            $carry['totalWithdrawn'] += $allOut;
+
+            return $carry;
+        }, [
+            'totalCapital' => 0,
+            'availableCash' => 0,
+            'cashInProcess' => 0,
+            'profit' => 0,
+            'totalInvested' => 0,
+            'totalWithdrawn' => 0,
+        ]);
 
         return Inertia::render('investors/index', [
-            'investors'       => $investors, // pass paginator, not items()
+            'investors' => $investors,
             'paginationLinks' => $investors->linkCollection(),
-            'search'          => $request->search,
+            'search' => $request->search,
+            'totals' => $totals,
         ]);
     }
 
