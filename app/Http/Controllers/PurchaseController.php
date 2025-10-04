@@ -6,6 +6,7 @@ use App\Models\Investor;
 use App\Models\InvestorTransaction;
 use App\Models\Purchase;
 use App\Models\PurchaseItem;
+use App\Models\Sale;
 use App\Models\Supplier;
 use App\Models\SupplierTransaction;
 use Illuminate\Http\Request;
@@ -92,10 +93,17 @@ class PurchaseController extends Controller
             ->get();
 
         $investors = Investor::where('user_id', auth()->id())
+            ->with(['transactions']) // Only need transactions for available cash
             ->select('id', 'name')
             ->get()
             ->map(function ($investor) {
-                $investor->current_balance = (float) Purchase::where('investor_id', $investor->id)->sum('total');
+                // Available cash = Total In - Total Out (from ALL transactions)
+                $allIn = $investor->transactions->where('type', 'In')->sum('amount');
+                $allOut = $investor->transactions->where('type', 'Out')->sum('amount');
+
+                $availableCash = $allIn - $allOut;
+
+                $investor->available_cash = $availableCash;
                 return $investor;
             });
 
@@ -104,7 +112,6 @@ class PurchaseController extends Controller
             'investors' => $investors,
         ]);
     }
-
 
 
 
@@ -288,10 +295,17 @@ class PurchaseController extends Controller
             ->get();
 
         $investors = Investor::where('user_id', auth()->id())
+            ->with(['transactions']) // Only need transactions for available cash
             ->select('id', 'name')
             ->get()
             ->map(function ($investor) {
-                $investor->current_balance = (float) Purchase::where('investor_id', $investor->id)->sum('total');
+                // Available cash = Total In - Total Out (from ALL transactions)
+                $allIn = $investor->transactions->where('type', 'In')->sum('amount');
+                $allOut = $investor->transactions->where('type', 'Out')->sum('amount');
+
+                $availableCash = $allIn - $allOut;
+
+                $investor->available_cash = $availableCash;
                 return $investor;
             });
 
@@ -302,7 +316,7 @@ class PurchaseController extends Controller
             'purchase'  => $purchase,
             'suppliers' => $suppliers,
             'investors' => $investors,
-            'amount_paid' => $supplierTransaction ? $supplierTransaction->amount : 0, // Add amount_paid to the response
+            'amount_paid' => $supplierTransaction ? $supplierTransaction->amount : 0,
         ]);
     }
 

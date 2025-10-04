@@ -28,7 +28,13 @@ class InvestorController extends Controller
         }
 
         $investors = $query
-            ->with(['transactions', 'purchases', 'sales'])
+            ->with([
+                'transactions',
+                'purchases' => function($query) {
+                    $query->with('items');
+                },
+                'sales'
+            ])
             ->latest("name")
             ->paginate(50);
 
@@ -38,18 +44,38 @@ class InvestorController extends Controller
             $allIn = $investor->transactions->where('type', 'In')->sum('amount');
             $allOut = $investor->transactions->where('type', 'Out')->sum('amount');
 
-            // Purchase and sales totals (for profit calculation and tracking)
+            // Purchase and sales totals
             $totalPurchases = $investor->purchases->sum('total');
             $totalSales = $investor->sales->sum('total');
 
-            // Calculate profit (sales revenue - purchase cost)
-            $profit = $totalSales - $totalPurchases;
+            // CORRECTED: Calculate actual profit (sales revenue - cost of goods sold)
+            $costOfGoodsSold = 0;
+            foreach ($investor->purchases as $purchase) {
+                if ($purchase->relationLoaded('items') && $purchase->items) {
+                    foreach ($purchase->items as $item) {
+                        // Cost of goods sold = quantity sold × purchase price
+                        $costOfGoodsSold += $item->quantity_selled * $item->unit_price;
+                    }
+                }
+            }
+
+            $profit = $totalSales - $costOfGoodsSold;
 
             // Available cash = Total In - Total Out (from ALL transactions)
             $availableCash = $allIn - $allOut;
 
-            // Cash in process: Purchases that haven't been sold yet
-            $cashInProcess = max($totalPurchases - $totalSales, 0);
+            // Cash in process = Remaining inventory value at purchase price
+            $cashInProcess = 0;
+            foreach ($investor->purchases as $purchase) {
+                if ($purchase->relationLoaded('items') && $purchase->items) {
+                    foreach ($purchase->items as $item) {
+                        $remainingQuantity = $item->quantity - $item->quantity_selled;
+                        if ($remainingQuantity > 0) {
+                            $cashInProcess += $remainingQuantity * $item->unit_price;
+                        }
+                    }
+                }
+            }
 
             // Total capital = Available cash + Cash in process
             $totalCapital = $availableCash + $cashInProcess;
@@ -61,13 +87,20 @@ class InvestorController extends Controller
             $investor->profit = $profit;
             $investor->total_invested = $allIn;
             $investor->total_withdrawn = $allOut;
+            $investor->cost_of_goods_sold = $costOfGoodsSold; // For reference
 
             return $investor;
         });
 
         // Calculate totals for ALL investors (not just current page)
         $allInvestors = Investor::where('user_id', Auth::id())
-            ->with(['transactions', 'purchases', 'sales'])
+            ->with([
+                'transactions',
+                'purchases' => function($query) {
+                    $query->with('items');
+                },
+                'sales'
+            ])
             ->get();
 
         $totals = $allInvestors->reduce(function ($carry, $investor) {
@@ -75,9 +108,33 @@ class InvestorController extends Controller
             $allOut = $investor->transactions->where('type', 'Out')->sum('amount');
             $totalPurchases = $investor->purchases->sum('total');
             $totalSales = $investor->sales->sum('total');
-            $profit = $totalSales - $totalPurchases;
+
+            // CORRECTED: Calculate cost of goods sold for totals
+            $costOfGoodsSold = 0;
+            foreach ($investor->purchases as $purchase) {
+                if ($purchase->relationLoaded('items') && $purchase->items) {
+                    foreach ($purchase->items as $item) {
+                        $costOfGoodsSold += $item->quantity_selled * $item->unit_price;
+                    }
+                }
+            }
+
+            $profit = $totalSales - $costOfGoodsSold;
             $availableCash = $allIn - $allOut;
-            $cashInProcess = max($totalPurchases - $totalSales, 0);
+
+            // Cash in process calculation
+            $cashInProcess = 0;
+            foreach ($investor->purchases as $purchase) {
+                if ($purchase->relationLoaded('items') && $purchase->items) {
+                    foreach ($purchase->items as $item) {
+                        $remainingQuantity = $item->quantity - $item->quantity_selled;
+                        if ($remainingQuantity > 0) {
+                            $cashInProcess += $remainingQuantity * $item->unit_price;
+                        }
+                    }
+                }
+            }
+
             $totalCapital = $availableCash + $cashInProcess;
 
             $carry['totalCapital'] += $totalCapital;
@@ -86,6 +143,7 @@ class InvestorController extends Controller
             $carry['profit'] += $profit;
             $carry['totalInvested'] += $allIn;
             $carry['totalWithdrawn'] += $allOut;
+            $carry['costOfGoodsSold'] += $costOfGoodsSold; // For reference
 
             return $carry;
         }, [
@@ -95,6 +153,7 @@ class InvestorController extends Controller
             'profit' => 0,
             'totalInvested' => 0,
             'totalWithdrawn' => 0,
+            'costOfGoodsSold' => 0,
         ]);
 
         return Inertia::render('investors/index', [

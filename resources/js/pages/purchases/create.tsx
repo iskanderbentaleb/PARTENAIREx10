@@ -34,7 +34,7 @@ interface Supplier {
 interface Investor {
   id: number;
   name: string;
-  current_balance: number;
+  available_cash: number;
 }
 
 interface Item {
@@ -137,9 +137,9 @@ export default function PurchasesCreatePage({ suppliers, investors }: Props) {
     if (Number(data.amount_paid) > Number(data.total)) errors.amount_paid = "Amount paid cannot exceed total amount";
 
     // Check if investor has sufficient balance (calculated from purchases)
-    // if (selectedInvestor && data.total > selectedInvestor.current_balance) {
-    //   errors.investor_id = `Investor has insufficient balance. Available: ${selectedInvestor.current_balance.toFixed(2)} DZD`;
-    // }
+    if (selectedInvestor && data.total > selectedInvestor.available_cash) {
+      errors.investor_id = `Investor has insufficient balance. Available: ${selectedInvestor.available_cash.toFixed(2)} DZD`;
+    }
 
     (data.items || []).forEach((item: any, index: number) => {
       if (!item.product_name) errors[`items.${index}.product_name`] = "Product name is required";
@@ -332,7 +332,7 @@ export default function PurchasesCreatePage({ suppliers, investors }: Props) {
                     <option value="">Select Investor</option>
                     {investors.map((inv) => (
                       <option key={inv.id} value={inv.id}>
-                        {inv.name} — Balance: {Number(inv.current_balance).toFixed(2)} {data.currency}
+                        {inv.name} — Balance: {Number(inv.available_cash).toFixed(2)} {data.currency}
                       </option>
                     ))}
                   </select>
@@ -600,7 +600,7 @@ export default function PurchasesCreatePage({ suppliers, investors }: Props) {
                       <div className="flex justify-between items-center">
                         <span className="text-sm font-medium text-white">Investor Balance:</span>
                         <span className="text-sm font-semibold text-white">
-                          {selectedInvestor.current_balance.toFixed(2)} {data.currency}
+                          {selectedInvestor.available_cash.toFixed(2)} {data.currency}
                         </span>
                       </div>
                     </div>
