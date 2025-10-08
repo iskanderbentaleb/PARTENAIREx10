@@ -10,7 +10,6 @@ import {
   VisibilityState,
   useReactTable,
 } from "@tanstack/react-table";
-
 import { Input } from "@/components/ui/input";
 import {
   Table,
@@ -25,13 +24,16 @@ import { Button } from "@/components/ui/button";
 import { Search } from "lucide-react";
 import { useState } from "react";
 import { router, usePage } from "@inertiajs/react";
+import { FilterPopover } from "./ui/filter-popover";
 
 interface DataTableProps<TData, TValue> {
   columns: ColumnDef<TData, TValue>[];
   data: TData[];
   paginationLinks: { url: string | null; label: string; active: boolean }[];
-  searchRoute: string; // ✅ route name or full URL for search/pagination
-  searchParam?: string; // ✅ default: "search"
+  searchRoute: string;
+  searchParam?: string;
+  filterChildren?: React.ReactNode;
+  initialFilters?: Record<string, any>;
 }
 
 export function DataTable<TData, TValue>({
@@ -40,6 +42,8 @@ export function DataTable<TData, TValue>({
   paginationLinks,
   searchRoute,
   searchParam = "search",
+  filterChildren,
+  initialFilters = {},
 }: DataTableProps<TData, TValue>) {
   const pageProps = usePage().props as Record<string, any>;
   const searchValue = pageProps[searchParam] ?? "";
@@ -48,6 +52,24 @@ export function DataTable<TData, TValue>({
   );
 
   const handleSearch = () => {
+    router.get(
+      route(searchRoute),
+      { [searchParam]: query },
+      { preserveScroll: true, preserveState: true }
+    );
+  };
+
+  // ✅ Handle filter application
+  const handleApplyFilters = (filters: Record<string, any>) => {
+    router.get(
+      route(searchRoute),
+      { [searchParam]: query, ...filters },
+      { preserveScroll: true, preserveState: true }
+    );
+  };
+
+  // ✅ Handle filter clearing
+  const handleClearFilters = () => {
     router.get(
       route(searchRoute),
       { [searchParam]: query },
@@ -90,7 +112,7 @@ export function DataTable<TData, TValue>({
         className="flex flex-row flex-wrap items-center gap-2"
       >
         <Input
-          placeholder="Search..."
+          placeholder="Search purchases..."
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           className="flex-1 border-gray-300 dark:border-gray-700"
@@ -101,10 +123,20 @@ export function DataTable<TData, TValue>({
         >
           <Search className="h-4 w-4" />
         </Button>
+
+        {/* ✅ Filter Button with Popover */}
+        {filterChildren && (
+          <FilterPopover
+            onApplyFilters={handleApplyFilters}
+            onClearFilters={handleClearFilters}
+          >
+            {filterChildren}
+          </FilterPopover>
+        )}
       </form>
 
       {/* ---- Table ------ */}
-      <div className="bg-white dark:bg-zinc-950 rounded-md border h-full shadow-sm flex flex-col">
+      <div className="bg-white dark:bg-zinc-950 rounded-md border h-full shadow-sm flex flex-col mt-4">
         <div className="overflow-x-auto">
           <Table className="w-full">
             {/* Table Header */}
@@ -140,7 +172,7 @@ export function DataTable<TData, TValue>({
                     {row.getVisibleCells().map((cell) => (
                       <TableCell
                         key={cell.id}
-                        className="p-1/2 pl-3 pr-3 text-xs border-b border-gray-200 dark:border-zinc-900"
+                        className="p-3 text-sm border-b border-gray-200 dark:border-zinc-900"
                       >
                         {flexRender(
                           cell.column.columnDef.cell,

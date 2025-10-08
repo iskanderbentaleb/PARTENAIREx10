@@ -27,6 +27,7 @@ class PurchaseController extends Controller
         $query = Purchase::with(['supplier', 'investor', 'items'])
             ->where('user_id', Auth::id());
 
+        // Search functionality
         if ($request->filled('search')) {
             $searchTerm = '%' . $request->search . '%';
 
@@ -71,13 +72,133 @@ class PurchaseController extends Controller
             });
         }
 
+        // Date Range Filter
+        if ($request->filled('startDate')) {
+            $query->where('purchase_date', '>=', $request->startDate);
+        }
+
+        if ($request->filled('endDate')) {
+            $query->where('purchase_date', '<=', $request->endDate);
+        }
+
+        // Supplier Filter
+        if ($request->filled('supplier_id')) {
+            $query->where('supplier_id', $request->supplier_id);
+        }
+
+        // Investor Filter
+        if ($request->filled('investor_id')) {
+            $query->where('investor_id', $request->investor_id);
+        }
+
+        // Total Amount Range Filter
+        if ($request->filled('total_min')) {
+            $query->where('total', '>=', $request->total_min);
+        }
+
+        if ($request->filled('total_max')) {
+            $query->where('total', '<=', $request->total_max);
+        }
+
+        // Currency Filter
+        // if ($request->filled('currency')) {
+        //     $query->where('currency', $request->currency);
+        // }
+
+        // ✅ Get summary data BEFORE pagination
+        $summary = $query->clone()->selectRaw('
+            COUNT(*) as total_purchases,
+            SUM(subtotal) as total_subtotal,
+            SUM(discount_value) as total_discount,
+            SUM(shipping_value) as total_shipping,
+            SUM(total) as grand_total
+        ')->first();
+
         // Order by latest purchase date
         $purchases = $query->latest()->paginate(50);
+
+        // ✅ Apply sold_percentage filter AFTER getting the results (client-side filtering)
+        if ($request->filled('sold_percentage_min') || $request->filled('sold_percentage_max')) {
+            $minPercentage = $request->filled('sold_percentage_min') ? (float)$request->sold_percentage_min : 0;
+            $maxPercentage = $request->filled('sold_percentage_max') ? (float)$request->sold_percentage_max : 100;
+
+            $purchases->getCollection()->transform(function ($purchase) use ($minPercentage, $maxPercentage) {
+                // Calculate sold percentage for each purchase
+                $totalQty = $purchase->items->sum('quantity');
+                $totalSold = $purchase->items->sum('quantity_selled');
+                $soldPercentage = $totalQty > 0 ? round(($totalSold / $totalQty) * 100, 2) : 0;
+
+                // Add the calculated sold_percentage to the purchase object
+                $purchase->sold_percentage_calculated = $soldPercentage;
+
+                return $purchase;
+            });
+
+            // Filter the collection based on sold percentage
+            $filteredCollection = $purchases->getCollection()->filter(function ($purchase) use ($minPercentage, $maxPercentage) {
+                return $purchase->sold_percentage_calculated >= $minPercentage &&
+                    $purchase->sold_percentage_calculated <= $maxPercentage;
+            });
+
+            // Create a new paginator with the filtered collection
+            $purchases = new \Illuminate\Pagination\LengthAwarePaginator(
+                $filteredCollection,
+                $filteredCollection->count(),
+                $purchases->perPage(),
+                $purchases->currentPage(),
+                ['path' => $purchases->path()]
+            );
+
+            // ✅ Recalculate summary for filtered sold percentage results
+            $filteredIds = $filteredCollection->pluck('id');
+            $summary = Purchase::whereIn('id', $filteredIds)
+                ->selectRaw('
+                    COUNT(*) as total_purchases,
+                    SUM(subtotal) as total_subtotal,
+                    SUM(discount_value) as total_discount,
+                    SUM(shipping_value) as total_shipping,
+                    SUM(total) as grand_total
+                ')->first();
+        }
+
+        // Get filter options for frontend dropdowns
+        $suppliers = Supplier::where('user_id', Auth::id())->get(['id', 'name']);
+        $investors = Investor::where('user_id', Auth::id())->get(['id', 'name']);
+
+        // Get unique currencies for filter
+        $currencies = Purchase::where('user_id', Auth::id())
+            ->distinct()
+            ->pluck('currency')
+            ->filter()
+            ->values();
 
         return Inertia::render('purchases/index', [
             'purchases'       => $purchases,
             'paginationLinks' => $purchases->linkCollection(),
             'search'          => $request->search,
+            'summary'         => [ // ✅ Add summary data
+                'total_purchases' => $summary->total_purchases ?? 0,
+                'total_subtotal' => $summary->total_subtotal ?? 0,
+                'total_discount' => $summary->total_discount ?? 0,
+                'total_shipping' => $summary->total_shipping ?? 0,
+                'grand_total' => $summary->grand_total ?? 0,
+            ],
+            'filters'         => [ // Pass current filter values back to frontend
+                'startDate' => $request->startDate,
+                'endDate' => $request->endDate,
+                'supplier_id' => $request->supplier_id,
+                'investor_id' => $request->investor_id,
+                'sold_percentage_min' => $request->sold_percentage_min,
+                'sold_percentage_max' => $request->sold_percentage_max,
+                'total_min' => $request->total_min,
+                'total_max' => $request->total_max,
+                'currency' => $request->currency,
+            ],
+            'filterOptions'   => [ // Pass options for filter dropdowns
+                'suppliers' => $suppliers,
+                'investors' => $investors,
+                'currencies' => $currencies,
+            ],
         ]);
     }
 
@@ -295,30 +416,37 @@ class PurchaseController extends Controller
             ->get();
 
         $investors = Investor::where('user_id', auth()->id())
-            ->with(['transactions']) // Only need transactions for available cash
+            ->with(['transactions'])
             ->select('id', 'name')
             ->get()
-            ->map(function ($investor) {
+            ->map(function ($investor) use ($purchase) {
                 // Available cash = Total In - Total Out (from ALL transactions)
                 $allIn = $investor->transactions->where('type', 'In')->sum('amount');
                 $allOut = $investor->transactions->where('type', 'Out')->sum('amount');
-
                 $availableCash = $allIn - $allOut;
+
+                // ✅ If this investor is linked to the current purchase,
+                // add back the total of that purchase to their available cash
+                if ($purchase->investor_id === $investor->id) {
+                    $availableCash += $purchase->total;
+                }
 
                 $investor->available_cash = $availableCash;
                 return $investor;
             });
 
-        // Get the supplier transaction linked to this purchase
         $supplierTransaction = SupplierTransaction::where('purchase_id', $purchase->id)->first();
 
         return Inertia::render('purchases/edit', [
-            'purchase'  => $purchase,
+            'purchase' => $purchase,
             'suppliers' => $suppliers,
             'investors' => $investors,
             'amount_paid' => $supplierTransaction ? $supplierTransaction->amount : 0,
+            // ✅ Optionally send old total to frontend too
+            'previous_total' => $purchase->total,
         ]);
     }
+
 
 
     /**
