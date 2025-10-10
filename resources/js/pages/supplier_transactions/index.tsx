@@ -1,4 +1,7 @@
 import { DataTable } from '../components/data-table';
+import { SupplierSummaryCard } from '../components/supplier-summary-card'; // Updated import
+import { SelectFilter } from '../components/filters/select-filter';
+import { RangeFilter } from '../components/filters/range-filter';
 import { type ColumnDef } from '@tanstack/react-table';
 import { Button } from "@/components/ui/button";
 import { Trash, Edit, Eye } from "lucide-react";
@@ -17,9 +20,10 @@ import AppLayout from '@/layouts/app-layout';
 import { Head, Link, router } from '@inertiajs/react';
 import { toast } from 'sonner';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { DateRangePickerFilter } from '../components/filters/date-range-picker-filter';
 
 // Breadcrumbs
-const breadcrumbs: BreadcrumbItem[] = [
+const breadcrumbs = [
   { title: 'Supplier Transactions', href: '/supplier-transactions' },
 ];
 
@@ -41,17 +45,43 @@ type SupplierTransaction = {
   } | null;
 };
 
-export default function SupplierTransactionsPage({ transactions, paginationLinks }: any) {
+interface SupplierTransactionsPageProps {
+  transactions: {
+    data: SupplierTransaction[];
+  };
+  paginationLinks: any[];
+  filters?: Record<string, any>;
+  filterOptions?: Record<string, any>;
+  summary?: Record<string, any>;
+}
 
-    const formatDate = (dateString: string) => {
-        const date = new Date(dateString);
-        return date.toLocaleDateString('en-US', {
-            weekday: 'long',
-            day: 'numeric',
-            month: 'long',
-            year: 'numeric'
-        });
-    };
+export default function SupplierTransactionsPage({
+  transactions,
+  paginationLinks,
+  filters = {},
+  filterOptions = {},
+  summary = {}
+}: SupplierTransactionsPageProps) {
+
+  const formatDate = (dateString: string) => {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-US', {
+      weekday: 'long',
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric'
+    });
+  };
+
+  const formatCurrency = (amount: string) => {
+    const numAmount = parseFloat(amount);
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'DZD',
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(numAmount);
+  };
 
   const columns: ColumnDef<SupplierTransaction>[] = [
     {
@@ -62,7 +92,11 @@ export default function SupplierTransactionsPage({ transactions, paginationLinks
         return formatDate(date.toISOString());
       },
     },
-    { accessorKey: 'amount', header: 'Amount' },
+    {
+      accessorKey: 'amount',
+      header: 'Amount',
+      cell: ({ row }) => formatCurrency(row.original.amount)
+    },
     { accessorKey: 'note', header: 'Note' },
     {
       accessorKey: 'supplier',
@@ -104,10 +138,10 @@ export default function SupplierTransactionsPage({ transactions, paginationLinks
         const isLinkedToPurchase = transaction.purchase !== null;
 
         const handleDelete = () => {
-          if (isLinkedToPurchase) return; // Prevent deletion if linked to purchase
+          if (isLinkedToPurchase) return;
 
           router.delete(route("supplier_transactions.destroy", { id: transaction.id }), {
-            onSuccess: () => toast.success("Investor deleted successfully!"),
+            onSuccess: () => toast.success("Transaction deleted successfully!"),
             onError: () => toast.error("An error occurred."),
           });
         };
@@ -115,7 +149,6 @@ export default function SupplierTransactionsPage({ transactions, paginationLinks
         return (
           <div className="flex justify-center items-center space-x-1">
             {isLinkedToPurchase ? (
-              // View only mode for transactions linked to purchases
               <TooltipProvider>
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -129,7 +162,6 @@ export default function SupplierTransactionsPage({ transactions, paginationLinks
                 </Tooltip>
               </TooltipProvider>
             ) : (
-              // Edit button - only show for transactions not linked to purchases
               <TooltipProvider>
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -147,7 +179,6 @@ export default function SupplierTransactionsPage({ transactions, paginationLinks
             )}
 
             {isLinkedToPurchase ? (
-              // Disabled delete button with tooltip for linked transactions
               <TooltipProvider>
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -161,7 +192,6 @@ export default function SupplierTransactionsPage({ transactions, paginationLinks
                 </Tooltip>
               </TooltipProvider>
             ) : (
-              // Delete button - only show for transactions not linked to purchases
               <AlertDialog>
                 <AlertDialogTrigger asChild>
                   <Button variant="ghost" size="sm">
@@ -188,6 +218,22 @@ export default function SupplierTransactionsPage({ transactions, paginationLinks
     },
   ];
 
+  // Prepare filter options with safe defaults
+  const supplierOptions = filterOptions?.suppliers?.map((supplier: any) => ({
+    value: supplier.id.toString(),
+    label: supplier.name
+  })) || [];
+
+  // Prepare supplier-specific summary data
+  const supplierSummary = {
+    total_transactions: summary.total_transactions || summary.total_count || transactions.data.length,
+    total_suppliers: summary.total_suppliers || filterOptions?.suppliers?.length || 0,
+    total_amount: summary.total_amount || summary.grand_total || summary.total_sum,
+    pending_payments: summary.pending_payments || summary.pending_amount,
+    completed_transactions: summary.completed_transactions || summary.completed_count,
+    average_transaction: summary.average_transaction || summary.avg_amount
+  };
+
   return (
     <AppLayout
       breadcrumbs={breadcrumbs}
@@ -199,11 +245,36 @@ export default function SupplierTransactionsPage({ transactions, paginationLinks
     >
       <Head title="Supplier Transactions" />
       <div className="flex flex-1 flex-col gap-4 rounded-xl p-4 overflow-x-auto">
+        {/* ✅ Supplier-Specific Summary Cards */}
+        <SupplierSummaryCard summary={supplierSummary} />
+
         <DataTable
           columns={columns}
           data={transactions.data}
           paginationLinks={paginationLinks}
-          searchRoute="supplier_transactions" // ✅ Laravel route
+          searchRoute="supplier_transactions"
+          searchPlaceholder="Search transactions, suppliers, notes..."
+          initialFilters={filters}
+          filterChildren={
+            <>
+              <DateRangePickerFilter />
+
+              <SelectFilter
+                label="Supplier"
+                filterKey="supplier_id"
+                options={supplierOptions}
+              />
+
+              <RangeFilter
+                label="Transaction Amount"
+                filterKey="amount"
+                minPlaceholder="Min amount"
+                maxPlaceholder="Max amount"
+                minValue={0}
+                maxValue={9999999999.99}
+              />
+            </>
+          }
         />
       </div>
     </AppLayout>

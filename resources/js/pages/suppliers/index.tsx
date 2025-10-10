@@ -16,6 +16,9 @@ import {
 import AppLayout from '@/layouts/app-layout';
 import { Head, Link, router } from '@inertiajs/react';
 import { toast } from 'sonner';
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Package, CreditCard, FileText } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 // Breadcrumbs
 const breadcrumbs: BreadcrumbItem[] = [
@@ -107,8 +110,11 @@ export default function SuppliersPage({ suppliers, paginationLinks, totals }: an
       header: () => <div className="text-center w-full">Actions</div>,
       cell: ({ row }) => {
         const supplier = row.original;
+        const hasPurchases = (supplier.purchases_sum_total ?? 0) > 0;
 
         const handleDelete = () => {
+          if (hasPurchases) return;
+
           router.delete(route("suppliers.destroy", { id: supplier.id }), {
             onSuccess: () => toast.success("Supplier deleted successfully!"),
             onError: () => toast.error("An error occurred."),
@@ -122,25 +128,41 @@ export default function SuppliersPage({ suppliers, paginationLinks, totals }: an
                 <Edit className="h-4 w-4" />
               </Link>
             </Button>
-            <AlertDialog>
-              <AlertDialogTrigger asChild>
-                <Button variant="ghost" size="sm">
-                  <Trash className="h-4 w-4" />
-                </Button>
-              </AlertDialogTrigger>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>Confirm deletion</AlertDialogTitle>
-                  <AlertDialogDescription>
-                    Are you sure you want to delete {supplier.name}? This action cannot be undone.
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel>Cancel</AlertDialogCancel>
-                  <AlertDialogAction onClick={handleDelete}>Delete</AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
+
+            {hasPurchases ? (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button variant="ghost" size="sm" disabled>
+                      <Trash className="h-4 w-4 text-gray-400" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>Cannot delete supplier with purchase history</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            ) : (
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button variant="ghost" size="sm">
+                    <Trash className="h-4 w-4" />
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Confirm deletion</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      Are you sure you want to delete {supplier.name}? This action cannot be undone.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction onClick={handleDelete}>Delete</AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            )}
           </div>
         );
       },
@@ -158,25 +180,52 @@ export default function SuppliersPage({ suppliers, paginationLinks, totals }: an
     >
       <Head title="Suppliers" />
 
-      {/* Dashboard summary */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-5 p-4">
-        <div className="p-4 rounded-xl shadow bg-gray-100 dark:bg-zinc-900 ">
-          <h4 className="text-sm font-medium text-gray-500">Total Purchases</h4>
-          <p className="text-lg font-bold text-gray-900 dark:text-gray-200">{formatMoney(totals.purchases)}</p>
+        {/* Dashboard summary */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6 p-4">
+        {/* Total Purchases Card */}
+        <Card className="shadow-sm border hover:shadow-md transition-shadow">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Total Purchases</CardTitle>
+            <Package className="h-4 w-4 text-gray-600 dark:text-gray-400" />
+            </CardHeader>
+            <CardContent>
+            <div className="text-2xl font-bold text-gray-900 dark:text-gray-200">{formatMoney(totals.purchases)}</div>
+            <p className="text-xs text-muted-foreground mt-1">All supplier purchases</p>
+            </CardContent>
+        </Card>
+
+        {/* Total Payments Card */}
+        <Card className="shadow-sm border hover:shadow-md transition-shadow">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Total Payments</CardTitle>
+            <CreditCard className="h-4 w-4 text-green-600" />
+            </CardHeader>
+            <CardContent>
+            <div className="text-2xl font-bold text-green-600">{formatMoney(totals.payments)}</div>
+            <p className="text-xs text-muted-foreground mt-1">Amount paid to suppliers</p>
+            </CardContent>
+        </Card>
+
+        {/* Total Debts Card */}
+        <Card className="shadow-sm border hover:shadow-md transition-shadow">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Total Debts</CardTitle>
+            <FileText className={`h-4 w-4 ${
+                totals.debts > 0 ? "text-red-600" : totals.debts < 0 ? "text-orange-500" : "text-green-600"
+            }`} />
+            </CardHeader>
+            <CardContent>
+            <div className={`text-2xl font-bold ${
+                totals.debts > 0 ? "text-red-600" : totals.debts < 0 ? "text-orange-500" : "text-green-600"
+            }`}>
+                {formatMoney(totals.debts)}
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">
+                {totals.debts > 0 ? "Outstanding balance" : totals.debts < 0 ? "Prepaid amount" : "All settled"}
+            </p>
+            </CardContent>
+        </Card>
         </div>
-        <div className="p-4 rounded-xl shadow bg-gray-100 dark:bg-zinc-900">
-          <h4 className="text-sm font-medium text-gray-500">Total Payments</h4>
-          <p className="text-lg font-bold text-green-600">{formatMoney(totals.payments)}</p>
-        </div>
-        <div className="p-4 rounded-xl shadow bg-gray-100 dark:bg-zinc-900">
-          <h4 className="text-sm font-medium text-gray-500">Total Debts</h4>
-          <p className={`text-lg font-bold ${
-            totals.debts > 0 ? "text-red-600" : totals.debts < 0 ? "text-orange-500" : "text-green-600"
-          }`}>
-            {formatMoney(totals.debts)}
-          </p>
-        </div>
-      </div>
 
         <div className="flex flex-1 flex-col gap-4 rounded-xl p-4 overflow-x-auto">
             <DataTable

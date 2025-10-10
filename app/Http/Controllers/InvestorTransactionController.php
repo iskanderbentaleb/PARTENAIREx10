@@ -17,11 +17,9 @@ class InvestorTransactionController extends Controller
     public function index(Request $request)
     {
         $query = InvestorTransaction::where('user_id', Auth::id())
-            ->with(['investor', 'purchase', 'sale']); // eager load relations
+            ->with(['investor', 'purchase', 'sale']);
 
-        // optional: filter out 0 amounts if you want (like supplier)
-        // $query->where('amount', '>', 0);
-
+        // Search filter
         if ($request->filled('search')) {
             $searchTerm = '%' . $request->search . '%';
             $query->where(function ($q) use ($searchTerm) {
@@ -32,18 +30,59 @@ class InvestorTransactionController extends Controller
                 })
                 ->orWhere('note', 'like', $searchTerm)
                 ->orWhere('amount', 'like', $searchTerm)
-                ->orWhereDate('date', $searchTerm) // exact match like 2025-09-22
+                ->orWhereDate('date', $searchTerm)
                 ->orWhere('date', 'like', "%{$searchTerm}%")
                 ->orWhere('type', 'like', $searchTerm);
             });
         }
 
-        $transactions = $query->latest('updated_at' , 'asc')->paginate(50);
+        // Date range filter
+        if ($request->filled('date_from')) {
+            $query->whereDate('date', '>=', $request->date_from);
+        }
+        if ($request->filled('date_to')) {
+            $query->whereDate('date', '<=', $request->date_to);
+        }
+
+        // Investor filter
+        if ($request->filled('investor_id')) {
+            $query->where('investor_id', $request->investor_id);
+        }
+
+        // Transaction type filter
+        if ($request->filled('type')) {
+            $query->where('type', $request->type);
+        }
+
+        // Amount range filter
+        if ($request->filled('amount_min')) {
+            $query->where('amount', '>=', $request->amount_min);
+        }
+        if ($request->filled('amount_max')) {
+            $query->where('amount', '<=', $request->amount_max);
+        }
+
+        $transactions = $query->latest('updated_at')->paginate(50);
+
+        // Calculate summary data for the InvestorSummaryCard
+        $summary = [
+            'total_transactions' => $query->count(),
+            'total_investors' => $request->filled('investor_id')
+                ? 1 // If filtered by specific investor, count is 1
+                : Investor::where('user_id', Auth::id())->count(),
+            'total_invested' => (clone $query)->where('type', 'In')->sum('amount'),
+            'total_withdrawn' => abs((clone $query)->where('type', 'Out')->sum('amount')),
+            'average_transaction' => $query->avg('amount'),
+        ];
 
         return Inertia::render('investor_transactions/index', [
             'transactions'    => $transactions,
             'paginationLinks' => $transactions->linkCollection(),
-            'search'          => $request->search,
+            'filters'         => $request->all(),
+            'summary'         => $summary,
+            'filterOptions'   => [
+                'investors' => Investor::where('user_id', Auth::id())->get(['id', 'name']),
+            ],
         ]);
     }
 

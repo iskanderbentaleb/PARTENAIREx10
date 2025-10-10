@@ -1,4 +1,8 @@
 import { DataTable } from '../components/data-table';
+import { InvestorSummaryCard } from '../components/investor-summary-card';
+import { SelectFilter } from '../components/filters/select-filter';
+import { RangeFilter } from '../components/filters/range-filter';
+import { DateRangePickerFilter } from '../components/filters/date-range-picker-filter';
 import { type ColumnDef } from '@tanstack/react-table';
 import { Button } from "@/components/ui/button";
 import { Trash, Edit, Eye, ArrowDownCircle, ArrowUpCircle } from "lucide-react";
@@ -46,7 +50,24 @@ type InvestorTransaction = {
   } | null;
 };
 
-export default function InvestorTransactionsPage({ transactions, paginationLinks }: any) {
+interface InvestorTransactionsPageProps {
+  transactions: {
+    data: InvestorTransaction[];
+  };
+  paginationLinks: any[];
+  filters?: Record<string, any>;
+  filterOptions?: Record<string, any>;
+  summary?: Record<string, any>;
+  search?: string;
+}
+
+export default function InvestorTransactionsPage({
+  transactions,
+  paginationLinks,
+  filters = {},
+  filterOptions = {},
+  summary = {}
+}: InvestorTransactionsPageProps) {
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
@@ -56,6 +77,16 @@ export default function InvestorTransactionsPage({ transactions, paginationLinks
       month: 'long',
       year: 'numeric'
     });
+  };
+
+  const formatCurrency = (amount: string) => {
+    const numAmount = parseFloat(amount);
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'DZD',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    }).format(numAmount);
   };
 
   const columns: ColumnDef<InvestorTransaction>[] = [
@@ -68,33 +99,45 @@ export default function InvestorTransactionsPage({ transactions, paginationLinks
       },
     },
     {
-    accessorKey: "type",
-    header: "Transaction Type",
-    cell: ({ row }) => {
+      accessorKey: "type",
+      header: "Transaction Type",
+      cell: ({ row }) => {
         const type = row.original.type;
         const isIn = type === "In";
 
         return (
-        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2">
             {isIn ? (
-            <ArrowDownCircle className="h-5 w-5 text-green-600" />
+              <ArrowDownCircle className="h-5 w-5 text-green-600" />
             ) : (
-            <ArrowUpCircle className="h-5 w-5 text-red-600" />
+              <ArrowUpCircle className="h-5 w-5 text-red-600" />
             )}
             <span
-            className={`px-2 py-1 rounded-full text-xs font-semibold ${
+              className={`px-2 py-1 rounded-full text-xs font-semibold ${
                 isIn
-                ? "bg-green-100 text-green-700"
-                : "bg-red-100 text-red-700"
-            }`}
+                  ? "bg-green-100 text-green-700"
+                  : "bg-red-100 text-red-700"
+              }`}
             >
-            {isIn ? "In - دخول أموال للخزينة" : "Out - خروج أموال من الخزينة"}
+              {isIn ? "In - دخول أموال للخزينة" : "Out - خروج أموال من الخزينة"}
             </span>
-        </div>
+          </div>
         );
+      },
     },
+    {
+      accessorKey: 'amount',
+      header: 'Amount',
+      cell: ({ row }) => {
+        const amount = parseFloat(row.original.amount);
+        const isIn = row.original.type === "In";
+        return (
+          <div className={`font-medium ${isIn ? 'text-green-600' : 'text-red-600'}`}>
+            {formatCurrency(row.original.amount)}
+          </div>
+        );
+      }
     },
-    { accessorKey: 'amount', header: 'Amount' },
     { accessorKey: 'note', header: 'Note' },
     {
       accessorKey: 'investor',
@@ -233,6 +276,28 @@ export default function InvestorTransactionsPage({ transactions, paginationLinks
     },
   ];
 
+  // Prepare filter options with safe defaults
+  const investorOptions = filterOptions?.investors?.map((investor: any) => ({
+    value: investor.id.toString(),
+    label: investor.name
+  })) || [];
+
+  const transactionTypeOptions = [
+    { value: 'In', label: 'In - دخول أموال' },
+    { value: 'Out', label: 'Out - خروج أموال' }
+  ];
+
+  // Prepare investor-specific summary data
+  const investorSummary = {
+    total_transactions: summary.total_transactions || summary.total_count || transactions.data.length,
+    total_investors: summary.total_investors || filterOptions?.investors?.length || 0,
+    total_amount: summary.total_amount || summary.grand_total || summary.total_sum,
+    total_invested: summary.total_invested || summary.investment_total,
+    total_withdrawn: summary.total_withdrawn || summary.withdrawal_total,
+    net_flow: summary.net_flow || summary.net_amount,
+    average_transaction: summary.average_transaction || summary.avg_amount
+  };
+
   return (
     <AppLayout
       breadcrumbs={breadcrumbs}
@@ -244,11 +309,42 @@ export default function InvestorTransactionsPage({ transactions, paginationLinks
     >
       <Head title="Investor Transactions" />
       <div className="flex flex-1 flex-col gap-4 rounded-xl p-4 overflow-x-auto">
+        {/* ✅ Investor Summary Card */}
+        <InvestorSummaryCard summary={investorSummary} />
+
         <DataTable
           columns={columns}
           data={transactions.data}
           paginationLinks={paginationLinks}
           searchRoute="investor_transactions"
+          searchPlaceholder="Search transactions, investors, notes..."
+          initialFilters={filters}
+          filterChildren={
+            <>
+              <DateRangePickerFilter />
+
+              <SelectFilter
+                label="Investor"
+                filterKey="investor_id"
+                options={investorOptions}
+              />
+
+              <SelectFilter
+                label="Transaction Type"
+                filterKey="type"
+                options={transactionTypeOptions}
+              />
+
+              <RangeFilter
+                label="Transaction Amount"
+                filterKey="amount"
+                minPlaceholder="Min amount"
+                maxPlaceholder="Max amount"
+                minValue={0}
+                maxValue={9999999999.99}
+              />
+            </>
+          }
         />
       </div>
     </AppLayout>

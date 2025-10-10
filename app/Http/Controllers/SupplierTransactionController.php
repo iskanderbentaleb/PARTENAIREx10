@@ -17,8 +17,8 @@ class SupplierTransactionController extends Controller
     public function index(Request $request)
     {
         $query = SupplierTransaction::where('user_id', Auth::id())
-            ->where('amount', '>', 0 )
-            ->with(['supplier', 'purchase']); // eager load relations
+            ->where('amount', '>', 0)
+            ->with(['supplier', 'purchase']);
 
         if ($request->filled('search')) {
             $searchTerm = '%' . $request->search . '%';
@@ -30,18 +30,70 @@ class SupplierTransactionController extends Controller
                 })
                 ->orWhere('note', 'like', $searchTerm)
                 ->orWhere('amount', 'like', $searchTerm)
-                ->orWhereDate('date', $searchTerm) // exact match like 2025-09-22
+                ->orWhereDate('date', $searchTerm)
                 ->orWhere('date', 'like', "%{$searchTerm}%");
             });
         }
 
+        // ✅ Date Range Filter
+        if ($request->filled('startDate')) {
+            $query->where('date', '>=', $request->startDate);
+        }
+
+        if ($request->filled('endDate')) {
+            $query->where('date', '<=', $request->endDate);
+        }
+
+        // ✅ Supplier Filter
+        if ($request->filled('supplier_id')) {
+            $query->where('supplier_id', $request->supplier_id);
+        }
+
+        // ✅ Amount Range Filter
+        if ($request->filled('amount_min')) {
+            $query->where('amount', '>=', $request->amount_min);
+        }
+
+        if ($request->filled('amount_max')) {
+            $query->where('amount', '<=', $request->amount_max);
+        }
+
+        // ✅ Get summary data BEFORE pagination
+        $summary = $query->clone()->selectRaw('
+            COUNT(*) as total_transactions,
+            SUM(amount) as total_amount,
+            AVG(amount) as average_amount,
+            MAX(amount) as max_amount,
+            MIN(amount) as min_amount
+        ')->first();
+
         // Paginate results (50 per page)
         $transactions = $query->latest()->paginate(50);
 
+        // Get filter options for frontend dropdowns
+        $suppliers = Supplier::where('user_id', Auth::id())->get(['id', 'name']);
+
         return Inertia::render('supplier_transactions/index', [
-            'transactions'    => $transactions, // full paginator
+            'transactions'    => $transactions,
             'paginationLinks' => $transactions->linkCollection(),
             'search'          => $request->search,
+            'summary'         => [ // ✅ Add summary data
+                'total_transactions' => $summary->total_transactions ?? 0,
+                'total_amount' => $summary->total_amount ?? 0,
+                'average_amount' => $summary->average_amount ?? 0,
+                'max_amount' => $summary->max_amount ?? 0,
+                'min_amount' => $summary->min_amount ?? 0,
+            ],
+            'filters'         => [ // ✅ Pass current filter values back to frontend
+                'startDate' => $request->startDate,
+                'endDate' => $request->endDate,
+                'supplier_id' => $request->supplier_id,
+                'amount_min' => $request->amount_min,
+                'amount_max' => $request->amount_max,
+            ],
+            'filterOptions'   => [ // ✅ Pass options for filter dropdowns
+                'suppliers' => $suppliers,
+            ],
         ]);
     }
 

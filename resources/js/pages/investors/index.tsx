@@ -17,6 +17,7 @@ import AppLayout from '@/layouts/app-layout';
 import { Head, Link, router } from '@inertiajs/react';
 import { toast } from 'sonner';
 import { Badge } from "@/components/ui/badge";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 // Breadcrumbs
 const breadcrumbs: BreadcrumbItem[] = [
@@ -296,70 +297,79 @@ export default function InvestorsPage({ investors, paginationLinks, totals }: In
     >
       <Head title="Investors" />
 
-      {/* Summary Cards */}
-      <div className="grid p-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
-        <div className="rounded-lg border p-4 shadow-sm bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Total Capital</p>
-              <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">{formatMoney(totals.totalCapital)}</p>
-            </div>
-            <div className="p-2 bg-blue-100 dark:bg-blue-900/30 rounded-full">
-              <DollarSign className="h-6 w-6 text-blue-600 dark:text-blue-500" />
-            </div>
-          </div>
-        </div>
 
-        <div className="rounded-lg border p-4 shadow-sm bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Available Cash</p>
-              <p className="text-2xl font-bold text-green-600 dark:text-green-500">{formatMoney(totals.availableCash)}</p>
+        {/* Summary Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6 p-4">
+        {/* Total Capital Card */}
+        <Card className="shadow-sm border hover:shadow-md transition-shadow">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Total Capital</CardTitle>
+            <div className="p-2 bg-blue-100 dark:bg-blue-900/30 rounded-full">
+                <DollarSign className="h-4 w-4 text-blue-600 dark:text-blue-500" />
             </div>
+            </CardHeader>
+            <CardContent>
+            <div className="text-2xl font-bold text-gray-900 dark:text-gray-100">{formatMoney(totals.totalCapital)}</div>
+            <p className="text-xs text-muted-foreground mt-1">Available + In Process</p>
+            </CardContent>
+        </Card>
+
+        {/* Available Cash Card */}
+        <Card className="shadow-sm border hover:shadow-md transition-shadow">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Available Cash</CardTitle>
             <div className="p-2 bg-green-100 dark:bg-green-900/30 rounded-full">
-              <TrendingUp className="h-6 w-6 text-green-600 dark:text-green-500" />
+                <TrendingUp className="h-4 w-4 text-green-600 dark:text-green-500" />
             </div>
-          </div>
-        </div>
+            </CardHeader>
+            <CardContent>
+            <div className="text-2xl font-bold text-green-600 dark:text-green-500">{formatMoney(totals.availableCash)}</div>
+            <p className="text-xs text-muted-foreground mt-1">Ready to use</p>
+            </CardContent>
+        </Card>
 
-        <div className="rounded-lg border p-4 shadow-sm bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Cash in Process</p>
-              <p className="text-2xl font-bold text-blue-600 dark:text-blue-500">{formatMoney(totals.cashInProcess)}</p>
-            </div>
+        {/* Cash in Process Card */}
+        <Card className="shadow-sm border hover:shadow-md transition-shadow">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Cash in Process</CardTitle>
             <div className="p-2 bg-blue-100 dark:bg-blue-900/30 rounded-full">
-              <TrendingUp className="h-6 w-6 text-blue-600 dark:text-blue-500" />
+                <TrendingUp className="h-4 w-4 text-blue-600 dark:text-blue-500" />
             </div>
-          </div>
-        </div>
+            </CardHeader>
+            <CardContent>
+            <div className="text-2xl font-bold text-blue-600 dark:text-blue-500">{formatMoney(totals.cashInProcess)}</div>
+            <p className="text-xs text-muted-foreground mt-1">Inventory value</p>
+            </CardContent>
+        </Card>
 
-        <div className="rounded-lg border p-4 shadow-sm bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Total Profit</p>
-              <p className={`text-2xl font-bold ${
-                totals.profit >= 0
-                  ? 'text-green-600 dark:text-green-500'
-                  : 'text-red-600 dark:text-red-500'
-              }`}>
-                {formatMoney(totals.profit)}
-              </p>
-            </div>
+        {/* Total Profit Card */}
+        <Card className="shadow-sm border hover:shadow-md transition-shadow">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Total Profit</CardTitle>
             <div className={`p-2 rounded-full ${
-              totals.profit >= 0
+                totals.profit >= 0
                 ? 'bg-green-100 dark:bg-green-900/30'
                 : 'bg-red-100 dark:bg-red-900/30'
             }`}>
-              {totals.profit >= 0 ? (
-                <TrendingUp className="h-6 w-6 text-green-600 dark:text-green-500" />
-              ) : (
-                <TrendingDown className="h-6 w-6 text-red-600 dark:text-red-500" />
-              )}
+                {totals.profit >= 0 ? (
+                <TrendingUp className="h-4 w-4 text-green-600 dark:text-green-500" />
+                ) : (
+                <TrendingDown className="h-4 w-4 text-red-600 dark:text-red-500" />
+                )}
             </div>
-          </div>
+            </CardHeader>
+            <CardContent>
+            <div className={`text-2xl font-bold ${
+                totals.profit >= 0
+                ? 'text-green-600 dark:text-green-500'
+                : 'text-red-600 dark:text-red-500'
+            }`}>
+                {formatMoney(totals.profit)}
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">Sales - Cost of goods</p>
+            </CardContent>
+        </Card>
         </div>
-      </div>
 
         <div className="flex flex-1 flex-col gap-4 rounded-xl p-4 overflow-x-auto">
             <DataTable

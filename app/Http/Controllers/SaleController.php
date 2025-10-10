@@ -55,13 +55,77 @@ class SaleController extends Controller
             });
         }
 
+        // ✅ Date Range Filter
+        if ($request->filled('startDate')) {
+            $query->where('sale_date', '>=', $request->startDate);
+        }
+
+        if ($request->filled('endDate')) {
+            $query->where('sale_date', '<=', $request->endDate);
+        }
+
+        // ✅ Investor Filter
+        if ($request->filled('investor_id')) {
+            $query->where('investor_id', $request->investor_id);
+        }
+
+        // ✅ Total Amount Range Filter
+        if ($request->filled('total_min')) {
+            $query->where('total', '>=', $request->total_min);
+        }
+
+        if ($request->filled('total_max')) {
+            $query->where('total', '<=', $request->total_max);
+        }
+
+        // ✅ Currency Filter
+        if ($request->filled('currency')) {
+            $query->where('currency', $request->currency);
+        }
+
+        // ✅ Get summary data BEFORE pagination
+        $summary = $query->clone()->selectRaw('
+            COUNT(*) as total_sales,
+            SUM(subtotal) as total_subtotal,
+            SUM(discount_value) as total_discount,
+            SUM(total) as grand_total
+        ')->first();
+
         // Order by latest sale date
         $sales = $query->latest()->paginate(50);
+
+        // Get filter options for frontend dropdowns
+        $investors = Investor::where('user_id', Auth::id())->get(['id', 'name']);
+
+        // Get unique currencies for filter
+        $currencies = Sale::where('user_id', Auth::id())
+            ->distinct()
+            ->pluck('currency')
+            ->filter()
+            ->values();
 
         return Inertia::render('sales/index', [
             'sales'           => $sales,
             'paginationLinks' => $sales->linkCollection(),
             'search'          => $request->search,
+            'summary'         => [ // ✅ Add summary data
+                'total_sales' => $summary->total_sales ?? 0,
+                'total_subtotal' => $summary->total_subtotal ?? 0,
+                'total_discount' => $summary->total_discount ?? 0,
+                'grand_total' => $summary->grand_total ?? 0,
+            ],
+            'filters'         => [ // ✅ Pass current filter values back to frontend
+                'startDate' => $request->startDate,
+                'endDate' => $request->endDate,
+                'investor_id' => $request->investor_id,
+                'total_min' => $request->total_min,
+                'total_max' => $request->total_max,
+                'currency' => $request->currency,
+            ],
+            'filterOptions'   => [ // ✅ Pass options for filter dropdowns
+                'investors' => $investors,
+                'currencies' => $currencies,
+            ],
         ]);
     }
 
@@ -111,7 +175,7 @@ class SaleController extends Controller
     public function store(Request $request)
     {
         $request->validate([
-            'invoice_number' => 'nullable|string|max:255|unique:sales,invoice_number',
+            'invoice_number' => 'nullable|string|max:255',
             'sale_date' => 'required|date',
             'investor_id' => 'required|exists:investors,id',
             'subtotal' => 'required|numeric|min:0',
@@ -284,7 +348,7 @@ class SaleController extends Controller
         }
 
         $request->validate([
-            'invoice_number' => 'nullable|string|max:255|unique:sales,invoice_number,' . $sale->id,
+            'invoice_number' => 'nullable|string|max:255|',
             'sale_date' => 'required|date',
             'investor_id' => 'required|exists:investors,id',
             'subtotal' => 'required|numeric|min:0',

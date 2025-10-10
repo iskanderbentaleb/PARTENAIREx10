@@ -208,7 +208,8 @@ export default function PurchasesPage({
       <Head title="Purchases" />
       <div className="flex flex-1 flex-col gap-4 rounded-xl p-4 overflow-x-auto">
         {/* ✅ Summary Cards - Shows aggregated data based on current filters */}
-        <SummaryCard summary={summary} />
+        <SummaryCard summary={summary} type="purchase" />
+
 
         <DataTable
           columns={columns}
