@@ -88,7 +88,7 @@ const CapitalBadge = ({ amount }: { amount: number }) => {
 
   return (
     <Badge variant={variant} className="font-mono text-xs">
-      <DollarSign className="h-3 w-3 mr-1" />
+      {/* <DollarSign className="h-3 w-3 mr-1" /> */}
       {formatMoney(amount)}
     </Badge>
   );

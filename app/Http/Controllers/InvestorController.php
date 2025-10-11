@@ -38,6 +38,10 @@ class InvestorController extends Controller
             ->latest("name")
             ->paginate(50);
 
+
+
+
+
         // Calculate balances for each investor
         $investors->getCollection()->transform(function ($investor) {
             // ALL transactions (both manual and automatic from purchases/sales)
@@ -54,7 +58,7 @@ class InvestorController extends Controller
                 if ($purchase->relationLoaded('items') && $purchase->items) {
                     foreach ($purchase->items as $item) {
                         // Cost of goods sold = quantity sold × purchase price
-                        $costOfGoodsSold += $item->quantity_selled * $item->unit_price;
+                        $costOfGoodsSold += $item->quantity_selled * $item->unit_price_with_discount;
                     }
                 }
             }
@@ -71,7 +75,7 @@ class InvestorController extends Controller
                     foreach ($purchase->items as $item) {
                         $remainingQuantity = $item->quantity - $item->quantity_selled;
                         if ($remainingQuantity > 0) {
-                            $cashInProcess += $remainingQuantity * $item->unit_price;
+                            $cashInProcess += $remainingQuantity * $item->unit_price_with_discount;
                         }
                     }
                 }
@@ -91,6 +95,13 @@ class InvestorController extends Controller
 
             return $investor;
         });
+
+
+
+
+
+
+
 
         // Calculate totals for ALL investors (not just current page)
         $allInvestors = Investor::where('user_id', Auth::id())
@@ -114,7 +125,7 @@ class InvestorController extends Controller
             foreach ($investor->purchases as $purchase) {
                 if ($purchase->relationLoaded('items') && $purchase->items) {
                     foreach ($purchase->items as $item) {
-                        $costOfGoodsSold += $item->quantity_selled * $item->unit_price;
+                        $costOfGoodsSold += $item->quantity_selled * $item->unit_price_with_discount;
                     }
                 }
             }
@@ -129,7 +140,7 @@ class InvestorController extends Controller
                     foreach ($purchase->items as $item) {
                         $remainingQuantity = $item->quantity - $item->quantity_selled;
                         if ($remainingQuantity > 0) {
-                            $cashInProcess += $remainingQuantity * $item->unit_price;
+                            $cashInProcess += $remainingQuantity * $item->unit_price_with_discount;
                         }
                     }
                 }

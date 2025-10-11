@@ -62,7 +62,7 @@ class InvestorTransactionController extends Controller
             $query->where('amount', '<=', $request->amount_max);
         }
 
-        $transactions = $query->latest('updated_at')->paginate(50);
+        $transactions = $query->latest()->paginate(50);
 
         // Calculate summary data for the InvestorSummaryCard
         $summary = [

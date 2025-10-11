@@ -242,7 +242,12 @@ class SaleController extends Controller
                 $purchaseItem->increment('quantity_selled', $itemData['quantity']);
 
 
-                // add investor payment transaction ( In caisse of sale )
+
+
+
+            }
+
+            // add investor payment transaction ( In caisse of sale )
                 InvestorTransaction::create([
                     'date' => $request->sale_date,
                     'type' => 'In', // money enters caisse of investor (profit + capital return)
@@ -253,9 +258,6 @@ class SaleController extends Controller
                     'user_id' => auth()->id(),
                     'sale_id' => $sale->id,
                 ]);
-
-
-            }
 
             return redirect()->route('sales')
                 ->with('success', 'Sale created successfully!');

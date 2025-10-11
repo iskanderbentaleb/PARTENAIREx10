@@ -355,9 +355,21 @@ class PurchaseController extends Controller
                 ]
             ));
 
+            // Calculate total quantity of all items
+            $totalQuantity = collect($validated['items'])->sum('quantity');
+
+            // Avoid division by zero
+            $discountPerUnit = $totalQuantity > 0 ? $validated['discount_value'] / $totalQuantity : 0;
+
             // Create purchase items
             foreach ($validated['items'] as $item) {
-                $createdItem = $purchase->items()->create($item);
+                // Compute the unit_price + discounted for each product
+                $unitPriceWithDiscount = $item['unit_price'] - $discountPerUnit;
+
+                // Create the item with the new value
+                $createdItem = $purchase->items()->create(array_merge($item, [
+                    'unit_price_with_discount' => $unitPriceWithDiscount,
+                ]));
 
                 // Generate barcode from ID in Base16 (hexadecimal)
                 $barcode = strtoupper(dechex($createdItem->id) . $createdItem->barcode_prinsipal);
@@ -367,6 +379,7 @@ class PurchaseController extends Controller
                     'barcode_generated' => $barcode,
                 ]);
             }
+
 
             // Create Supplier Transaction
                 SupplierTransaction::create([
@@ -381,17 +394,17 @@ class PurchaseController extends Controller
                 ]);
 
             // Create investor transaction record
-            InvestorTransaction::create([
-                'date' => $validated['purchase_date'],
-                'type' => 'Out', // money going out from investor caise
-                'amount' => $validated['total'],
-                'note' => 'Payment for Purchase #' . $purchase->id .
-                            ($validated['supplier_invoice_number'] ?
-                            ' (Invoice: ' . $validated['supplier_invoice_number'] . ')' : ''),
-                'investor_id' => $investor->id,
-                'user_id' => auth()->id(),
-                'purchase_id' => $purchase->id,
-            ]);
+                InvestorTransaction::create([
+                    'date' => $validated['purchase_date'],
+                    'type' => 'Out', // money going out from investor caise
+                    'amount' => $validated['total'],
+                    'note' => 'Payment for Purchase #' . $purchase->id .
+                                ($validated['supplier_invoice_number'] ?
+                                ' (Invoice: ' . $validated['supplier_invoice_number'] . ')' : ''),
+                    'investor_id' => $investor->id,
+                    'user_id' => auth()->id(),
+                    'purchase_id' => $purchase->id,
+                ]);
 
         });
 
@@ -588,10 +601,20 @@ class PurchaseController extends Controller
             $existingItemIds = $purchase->items->pluck('id')->toArray();
             $updatedItemIds = [];
 
+            // Calculate total quantity of all items
+            $totalQuantity = collect($validated['items'])->sum('quantity');
+
+            // Avoid division by zero
+            $discountPerUnit = $totalQuantity > 0 ? $validated['discount_value'] / $totalQuantity : 0;
+
+
             foreach ($validated['items'] as $itemData) {
                 if (isset($itemData['id']) && !empty($itemData['id']) && in_array($itemData['id'], $existingItemIds)) {
                     // Update existing item
                     $item = PurchaseItem::find($itemData['id']);
+                    // Recalculate unit_price_with_discount
+                    $itemData['unit_price_with_discount'] = $itemData['unit_price'] - $discountPerUnit;
+
                     $item->update($itemData);
                     $updatedItemIds[] = $itemData['id'];
                 } else {
@@ -600,8 +623,13 @@ class PurchaseController extends Controller
 
                     // Generate barcode for new item
                     $barcode = strtoupper(dechex($newItem->id)) . ($newItem->barcode_prinsipal ?? '');
+
                     $newItem->update([
                         'barcode_generated' => $barcode,
+                    ]);
+                    // Recalculate unit_price_with_discount
+                    $newItem->update([
+                        'unit_price_with_discount' => $itemData['unit_price'] - $discountPerUnit,
                     ]);
 
                     $updatedItemIds[] = $newItem->id;
