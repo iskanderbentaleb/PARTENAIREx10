@@ -4,10 +4,12 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import AppLayout from "@/layouts/app-layout";
-import { Head, Link, useForm } from "@inertiajs/react";
+import { Head, Link, useForm, router } from "@inertiajs/react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Loader2 } from "lucide-react";
+import { Loader2, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
+import { PasswordConfirmModal } from "@/components/password-confirm-modal";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
 type BreadcrumbItem = {
   title: string;
@@ -30,16 +32,20 @@ export default function SupplierTransactionsCreatePage({
 }: {
   suppliers: Supplier[];
 }) {
-  const { data, setData, post, processing, errors } = useForm({
-    date: "",
+  const { data, setData, post, processing, errors, reset } = useForm({
+    date: new Date().toISOString().split('T')[0],
     amount: "",
     note: "",
     supplier_id: "",
   });
 
-  const [supplierData, setSupplierData] =
-    useState<SupplierFinancialData | null>(null);
+  const [supplierData, setSupplierData] = useState<SupplierFinancialData | null>(null);
   const [loadingSupplier, setLoadingSupplier] = useState(false);
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [formDataForSubmission, setFormDataForSubmission] = useState({});
+
+  // Get today's date in YYYY-MM-DD format for max date limit
+  const today = new Date().toISOString().split('T')[0];
 
   // Safely parse any value to a number, fallback 0
   function parseNumber(value: any): number {
@@ -51,11 +57,33 @@ export default function SupplierTransactionsCreatePage({
   function formatMoney(value: number | null | undefined) {
     const num = value ?? 0;
     return new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: "DZD",
+      style: 'currency',
+      currency: 'DZD',
       minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
     }).format(num);
   }
+
+  // Validate date string and check if it's in the future
+  const isValidDate = (dateString: string): { isValid: boolean; isFuture: boolean; date: Date | null } => {
+    const date = new Date(dateString);
+
+    if (isNaN(date.getTime())) {
+      return { isValid: false, isFuture: false, date: null };
+    }
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const selectedDate = new Date(date);
+    selectedDate.setHours(0, 0, 0, 0);
+
+    return {
+      isValid: true,
+      isFuture: selectedDate > today,
+      date: selectedDate
+    };
+  };
 
   useEffect(() => {
     if (!data.supplier_id) {
@@ -77,7 +105,6 @@ export default function SupplierTransactionsCreatePage({
         return res.json();
       })
       .then((json) => {
-        // Coerce values to numbers to avoid .toFixed / formatting errors
         setSupplierData({
           total_purchases: parseNumber(json.total_purchases),
           total_payments: parseNumber(json.total_payments),
@@ -96,12 +123,64 @@ export default function SupplierTransactionsCreatePage({
     return () => controller.abort();
   }, [data.supplier_id]);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleFormSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    post("/supplier_transactions", {
-      // optionally transform data before send
-      onError: () => toast.error("Failed to save transaction"),
-      onSuccess: () => toast.success("Transaction saved"),
+
+    if (!data.date || !data.amount || !data.supplier_id) {
+      toast.error("Please fill in all required fields");
+      return;
+    }
+
+    const dateValidation = isValidDate(data.date);
+    if (!dateValidation.isValid) {
+      toast.error("Please enter a valid date");
+      return;
+    }
+
+    if (dateValidation.isFuture) {
+      const formattedDate = dateValidation.date?.toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
+      });
+      toast.error(`${formattedDate} is in the future. Please select a valid date.`);
+      return;
+    }
+
+    const amountValue = parseFloat(data.amount);
+    if (isNaN(amountValue) || amountValue <= 0) {
+      toast.error("Amount must be a number greater than 0");
+      return;
+    }
+
+    setFormDataForSubmission({ ...data });
+    setShowPasswordModal(true);
+  };
+
+  const handlePasswordConfirm = (password: string) => {
+    // Use router.post instead of useForm's post to get proper error handling
+    router.post("/supplier_transactions", {
+      ...formDataForSubmission,
+      password,
+    }, {
+      onSuccess: () => {
+        setShowPasswordModal(false);
+        reset();
+        setFormDataForSubmission({});
+        toast.success("Supplier transaction created successfully!");
+      },
+      onError: (errors) => {
+        if (errors.password) {
+          // Password error - show in toast and keep modal open
+          toast.error(errors.password);
+        } else {
+          // Other form errors - close modal and they will be displayed automatically
+          setShowPasswordModal(false);
+          if (Object.keys(errors).length > 0) {
+            toast.error("Please check the form for errors.");
+          }
+        }
+      },
     });
   };
 
@@ -110,9 +189,11 @@ export default function SupplierTransactionsCreatePage({
     { title: "Create", href: "/supplier_transactions/create" },
   ];
 
-  // debt color logic: >0 => red (owes), 0 => green, <0 => orange (prepaid)
   const debtColorClass = (debt: number) =>
     debt > 0 ? "text-red-600" : debt < 0 ? "text-orange-500" : "text-green-600";
+
+  // Check if there are any errors
+  const hasErrors = Object.keys(errors).length > 0;
 
   return (
     <AppLayout
@@ -137,6 +218,16 @@ export default function SupplierTransactionsCreatePage({
           </CardHeader>
 
           <CardContent className="flex flex-col flex-1 space-y-6">
+            {/* Global Error Alert - Show when there are ANY errors */}
+            {hasErrors && (
+              <Alert variant="destructive">
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription>
+                  Please fix the errors below before proceeding.
+                </AlertDescription>
+              </Alert>
+            )}
+
             {/* Supplier Data Dashboard */}
             <div className="mb-2">
               {!data.supplier_id && (
@@ -152,7 +243,7 @@ export default function SupplierTransactionsCreatePage({
 
             {supplierData && (
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="p-4 rounded-xl border bg-gray-100 dark:bg-zinc-900  shadow-sm">
+                <div className="p-4 rounded-xl border bg-gray-100 dark:bg-zinc-900 shadow-sm">
                   <p className="text-xs text-gray-500">Total Purchases</p>
                   <p className="text-lg font-semibold text-gray-900 dark:text-gray-200">
                     {formatMoney(supplierData.total_purchases)}
@@ -180,7 +271,7 @@ export default function SupplierTransactionsCreatePage({
                       size="sm"
                       variant="ghost"
                       onClick={() =>
-                        setData("amount", Math.abs(supplierData.total_debts).toString())
+                        setData("amount", Math.abs(supplierData.total_debts).toFixed(2))
                       }
                       className="text-sm"
                     >
@@ -194,7 +285,7 @@ export default function SupplierTransactionsCreatePage({
 
             {/* Form */}
             <form
-              onSubmit={handleSubmit}
+              onSubmit={handleFormSubmit}
               className="flex flex-col flex-1 justify-between"
               noValidate
             >
@@ -210,20 +301,32 @@ export default function SupplierTransactionsCreatePage({
                       type="date"
                       value={data.date}
                       onChange={(e) => setData("date", e.target.value)}
+                      max={today}
                       className={errors.date ? "border-red-500" : ""}
+                      required
                     />
+                    <p className="text-xs text-gray-500">
+                      Maximum allowed date: {new Date(today).toLocaleDateString('en-US', {
+                        year: 'numeric',
+                        month: 'long',
+                        day: 'numeric'
+                      })}
+                    </p>
                     {errors.date && (
-                      <p className="text-sm text-red-500 mt-1">{errors.date}</p>
+                      <p className="text-sm text-red-500 mt-1 flex items-center gap-1">
+                        <AlertCircle className="h-3 w-3" />
+                        {errors.date}
+                      </p>
                     )}
                   </div>
 
-                  {/* Amount + quick actions */}
+                  {/* Amount */}
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
                       <Label htmlFor="amount">
-                        Amount <span className="text-red-500">*</span>
+                        Amount (DZD) <span className="text-red-500">*</span>
                       </Label>
-                      <div className="text-xs text-gray-400">DA</div>
+                      <div className="text-xs text-gray-400">Must be greater than 0</div>
                     </div>
 
                     <div className="flex gap-2">
@@ -231,10 +334,12 @@ export default function SupplierTransactionsCreatePage({
                         id="amount"
                         type="number"
                         step="0.01"
+                        min="0.01"
                         value={data.amount}
                         onChange={(e) => setData("amount", e.target.value)}
                         placeholder="0.00"
                         className={errors.amount ? "border-red-500" : ""}
+                        required
                       />
                       <Button
                         type="button"
@@ -248,7 +353,10 @@ export default function SupplierTransactionsCreatePage({
                     </div>
 
                     {errors.amount && (
-                      <p className="text-sm text-red-500 mt-1">{errors.amount}</p>
+                      <p className="text-sm text-red-500 mt-1 flex items-center gap-1">
+                        <AlertCircle className="h-3 w-3" />
+                        {errors.amount}
+                      </p>
                     )}
                   </div>
 
@@ -264,6 +372,7 @@ export default function SupplierTransactionsCreatePage({
                       className={`w-full rounded-md border px-3 py-2 text-sm focus:outline-none ${
                         errors.supplier_id ? "border-red-500" : "border-gray-300"
                       }`}
+                      required
                     >
                       <option value="">Select supplier</option>
                       {suppliers.map((supplier) => (
@@ -273,23 +382,29 @@ export default function SupplierTransactionsCreatePage({
                       ))}
                     </select>
                     {errors.supplier_id && (
-                      <p className="text-sm text-red-500 mt-1">{errors.supplier_id}</p>
+                      <p className="text-sm text-red-500 mt-1 flex items-center gap-1">
+                        <AlertCircle className="h-3 w-3" />
+                        {errors.supplier_id}
+                      </p>
                     )}
                   </div>
 
                   {/* Note */}
                   <div className="space-y-2 md:col-span-2">
-                    <Label htmlFor="note">Note</Label>
+                    <Label htmlFor="note">Note (Optional)</Label>
                     <Textarea
                       id="note"
                       value={data.note}
                       onChange={(e) => setData("note", e.target.value)}
-                      placeholder="Additional details..."
+                      placeholder="Additional details about this transaction..."
                       rows={6}
                       className={`resize-y ${errors.note ? "border-red-500" : ""}`}
                     />
                     {errors.note && (
-                      <p className="text-sm text-red-500 mt-1">{errors.note}</p>
+                      <p className="text-sm text-red-500 mt-1 flex items-center gap-1">
+                        <AlertCircle className="h-3 w-3" />
+                        {errors.note}
+                      </p>
                     )}
                   </div>
                 </div>
@@ -297,23 +412,41 @@ export default function SupplierTransactionsCreatePage({
 
               {/* Actions */}
               <div className="flex justify-end gap-2 pt-6 border-t mt-6">
-                <Button type="button" variant="outline" asChild disabled={processing}>
+                <Button
+                  type="button"
+                  variant="outline"
+                  asChild
+                  disabled={processing}
+                >
                   <Link href="/supplier_transactions">Cancel</Link>
                 </Button>
-                <Button type="submit" disabled={processing}>
+                <Button
+                  type="submit"
+                  disabled={processing || !data.date || !data.amount || !data.supplier_id}
+                  className="min-w-32"
+                >
                   {processing ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Saving...
+                      Creating...
                     </>
                   ) : (
-                    "Save Transaction"
+                    "Create Transaction"
                   )}
                 </Button>
               </div>
             </form>
           </CardContent>
         </Card>
+
+        {/* Password Confirmation Modal */}
+        <PasswordConfirmModal
+          isOpen={showPasswordModal}
+          onClose={() => setShowPasswordModal(false)}
+          onConfirm={handlePasswordConfirm}
+          action="create"
+          isLoading={processing}
+        />
       </div>
     </AppLayout>
   );

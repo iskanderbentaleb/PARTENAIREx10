@@ -6,7 +6,9 @@ use App\Models\Supplier;
 use App\Models\SupplierTransaction;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Hash;
 use Inertia\Inertia;
+use Carbon\Carbon;
 
 
 class SupplierTransactionController extends Controller
@@ -115,24 +117,46 @@ class SupplierTransactionController extends Controller
 
     /**
      * Store a newly created resource in storage.
-     */
+    */
     public function store(Request $request)
     {
         $validated = $request->validate([
             'date'        => 'required|date',
-            'amount'      => 'required|numeric|min:0',
+            'amount'      => 'required|numeric|min:0.01',
             'note'        => 'nullable|string|max:500',
             'supplier_id' => 'required|exists:suppliers,id',
+            'password'    => 'required|string',
         ]);
 
+        // Normalize dates (remove time part to compare only dates)
+        $selectedDate = Carbon::parse($validated['date'])->startOfDay();
+        $today = Carbon::today();
+
+        // Prevent future dates (compare pure date only)
+        if ($selectedDate->gt($today)) {
+            return back()
+                ->withErrors(['date' => 'Date cannot be in the future.'])
+                ->withInput();
+        }
+
+        // Verify password
+        if (!Hash::check($validated['password'], Auth::user()->password)) {
+            return back()
+                ->withErrors(['password' => 'Invalid password. Please try again.'])
+                ->withInput();
+        }
+
+        // Clean validated data
+        unset($validated['password']);
         $validated['user_id'] = Auth::id();
 
         SupplierTransaction::create($validated);
 
         return redirect()
-            ->route('supplier_transactions')
+            ->back()
             ->with('success', 'Supplier transaction created successfully.');
     }
+
 
     /**
      * Display the specified resource.
@@ -181,7 +205,6 @@ class SupplierTransactionController extends Controller
     {
         $supplierTransaction = SupplierTransaction::findOrFail($id);
 
-        // Check if purchase_id is not null before allowing update
         if ($supplierTransaction->purchase_id !== null) {
             return redirect()->route('supplier_transactions')
                 ->with('error', 'This transaction is linked to a purchase and cannot be updated.');
@@ -189,25 +212,56 @@ class SupplierTransactionController extends Controller
 
         $validated = $request->validate([
             'date'        => 'required|date',
-            'amount'      => 'required|numeric',
-            'note'        => 'nullable|string',
+            'amount'      => 'required|numeric|min:0.01',
+            'note'        => 'nullable|string|max:500',
             'supplier_id' => 'required|exists:suppliers,id',
+            'password'    => 'required|string',
         ]);
 
+        // Normalize dates (remove time part to compare only dates)
+        $selectedDate = Carbon::parse($validated['date'])->startOfDay();
+        $today = Carbon::today();
+
+        // Prevent future dates (compare pure date only)
+        if ($selectedDate->gt($today)) {
+            return back()
+                ->withErrors(['date' => 'Date cannot be in the future.'])
+                ->withInput();
+        }
+
+        // Verify password
+        if (!Hash::check($validated['password'], Auth::user()->password)) {
+            return back()
+                ->withErrors(['password' => 'Invalid password. Please try again.'])
+                ->withInput();
+        }
+
+        // Clean validated data
+        unset($validated['password']);
         $supplierTransaction->update($validated);
 
-        return redirect()->route('supplier_transactions')
+        return redirect()
+            ->route('supplier_transactions')
             ->with('success', 'Supplier Transaction updated successfully.');
     }
+
 
     /**
      * Remove the specified resource from storage.
      */
-    public function destroy($id)
+    public function destroy(Request $request, $id)
     {
+        $request->validate([
+            'password' => 'required|string'
+        ]);
+
+        // Verify password
+        if (!Hash::check($request->password, Auth::user()->password)) {
+            return back()->withErrors(['password' => 'Invalid password. Please try again.']);
+        }
+
         $supplierTransaction = SupplierTransaction::findOrFail($id);
 
-        // Check if purchase_id is not null before allowing deletion
         if ($supplierTransaction->purchase_id !== null) {
             return redirect()->route('supplier_transactions')
                 ->with('error', 'This transaction is linked to a purchase and cannot be deleted.');

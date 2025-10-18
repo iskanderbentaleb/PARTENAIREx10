@@ -1,13 +1,15 @@
-import React from "react";
+import React, { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import AppLayout from "@/layouts/app-layout";
-import { Head, Link, useForm } from "@inertiajs/react";
+import { Head, Link, useForm, router } from "@inertiajs/react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Loader2, Calendar, User, FileText } from "lucide-react";
+import { Loader2, Calendar, User, FileText, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
+import { PasswordConfirmModal } from "@/components/password-confirm-modal";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
 type BreadcrumbItem = {
   title: string;
@@ -24,7 +26,7 @@ export default function InvestorTransactionsCreatePage({
 }: {
   investors: Investor[];
 }) {
-  const { data, setData, post, processing, errors, reset } = useForm({
+  const { data, setData, processing, errors, reset } = useForm({
     date: new Date().toISOString().split('T')[0], // Default to today
     type: "In",
     amount: "",
@@ -32,7 +34,36 @@ export default function InvestorTransactionsCreatePage({
     investor_id: "",
   });
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [formDataForSubmission, setFormDataForSubmission] = useState({});
+
+  // Validate date string and check if it's in the future
+  const isValidDate = (dateString: string): { isValid: boolean; isFuture: boolean; date: Date | null } => {
+    // Parse the date string (YYYY-MM-DD format from input)
+    const [year, month, day] = dateString.split('-').map(Number);
+    const date = new Date(year, month - 1, day); // month is 0-indexed in JavaScript
+
+    // Check if the date is valid
+    if (isNaN(date.getTime())) {
+      return { isValid: false, isFuture: false, date: null };
+    }
+
+    // Create today's date without time component for accurate comparison
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    // Compare dates (ignoring time)
+    const selectedDate = new Date(date);
+    selectedDate.setHours(0, 0, 0, 0);
+
+    return {
+      isValid: true,
+      isFuture: selectedDate > today,
+      date: selectedDate
+    };
+  };
+
+  const handleFormSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
     // Client-side validation
@@ -41,21 +72,59 @@ export default function InvestorTransactionsCreatePage({
       return;
     }
 
-    if (parseFloat(data.amount) <= 0) {
-      toast.error("Amount must be greater than 0");
+    // Validate date format and future date
+    const dateValidation = isValidDate(data.date);
+    if (!dateValidation.isValid) {
+      toast.error("Please enter a valid date");
       return;
     }
 
-    post("/investor_transactions", {
-      onError: (errors) => {
-        toast.error("Failed to save transaction");
-        console.error("Validation errors:", errors);
-      },
+    if (dateValidation.isFuture) {
+      const formattedDate = dateValidation.date?.toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
+      });
+      toast.error(`${formattedDate} is in the future. Please select a valid date.`);
+      return;
+    }
+
+    // Validate amount is positive
+    const amountValue = parseFloat(data.amount);
+    if (isNaN(amountValue) || amountValue <= 0) {
+      toast.error("Amount must be a number greater than 0");
+      return;
+    }
+
+    // Store the form data for later submission and show password modal
+    setFormDataForSubmission({ ...data });
+    setShowPasswordModal(true);
+  };
+
+  const handlePasswordConfirm = (password: string) => {
+    // Use router.post instead of useForm's post to get proper error handling
+    router.post("/investor_transactions", {
+      ...formDataForSubmission,
+      password,
+    }, {
       onSuccess: () => {
-        toast.success("Transaction saved successfully");
+        setShowPasswordModal(false);
         reset();
+        setFormDataForSubmission({});
+        toast.success("Investor transaction created successfully!");
       },
-      preserveScroll: true,
+      onError: (errors) => {
+        if (errors.password) {
+          // Password error - show in toast and keep modal open
+          toast.error(errors.password);
+        } else {
+          // Other form errors - close modal and they will be displayed automatically
+          setShowPasswordModal(false);
+          if (Object.keys(errors).length > 0) {
+            toast.error("Please check the form for errors.");
+          }
+        }
+      },
     });
   };
 
@@ -81,6 +150,9 @@ export default function InvestorTransactionsCreatePage({
 
   const isFormValid = data.date && data.amount && data.investor_id && parseFloat(data.amount) > 0;
 
+  // Check if there are any errors
+  const hasErrors = Object.keys(errors).length > 0;
+
   return (
     <AppLayout
       breadcrumbs={breadcrumbs}
@@ -105,8 +177,18 @@ export default function InvestorTransactionsCreatePage({
           </CardHeader>
 
           <CardContent className="flex flex-col flex-1 space-y-6">
+            {/* Global Error Alert - Show when there are ANY errors */}
+            {hasErrors && (
+              <Alert variant="destructive">
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription>
+                  Please fix the errors below before proceeding.
+                </AlertDescription>
+              </Alert>
+            )}
+
             <form
-              onSubmit={handleSubmit}
+              onSubmit={handleFormSubmit}
               className="flex flex-col flex-1 justify-between"
               noValidate
             >
@@ -123,11 +205,20 @@ export default function InvestorTransactionsCreatePage({
                       type="date"
                       value={data.date}
                       onChange={(e) => setData("date", e.target.value)}
+                      max={new Date().toISOString().split('T')[0]} // Prevent future dates in browser
                       className={errors.date ? "border-red-500" : ""}
-                      max={new Date().toISOString().split('T')[0]} // Prevent future dates
+                      required
                     />
+                    <p className="text-xs text-gray-500">
+                      Maximum allowed date: {new Date().toLocaleDateString('en-US', {
+                        year: 'numeric',
+                        month: 'long',
+                        day: 'numeric'
+                      })}
+                    </p>
                     {errors.date && (
                       <p className="text-sm text-red-500 mt-1 flex items-center gap-1">
+                        <AlertCircle className="h-3 w-3" />
                         {errors.date}
                       </p>
                     )}
@@ -145,12 +236,16 @@ export default function InvestorTransactionsCreatePage({
                       className={`w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
                         errors.type ? "border-red-500" : "border-gray-300"
                       }`}
+                      required
                     >
                       <option value="In">In - إدخال أموال للخزينة</option>
                       <option value="Out">Out - إخراج أموال من الخزينة</option>
                     </select>
                     {errors.type && (
-                      <p className="text-sm text-red-500 mt-1">{errors.type}</p>
+                      <p className="text-sm text-red-500 mt-1 flex items-center gap-1">
+                        <AlertCircle className="h-3 w-3" />
+                        {errors.type}
+                      </p>
                     )}
                   </div>
 
@@ -158,9 +253,9 @@ export default function InvestorTransactionsCreatePage({
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
                       <Label htmlFor="amount">
-                        Amount <span className="text-red-500">*</span>
+                        Amount (DZD) <span className="text-red-500">*</span>
                       </Label>
-                      <div className="text-xs text-gray-400">DA</div>
+                      <div className="text-xs text-gray-400">Must be greater than 0</div>
                     </div>
 
                     <div className="flex gap-2">
@@ -173,6 +268,7 @@ export default function InvestorTransactionsCreatePage({
                           onChange={(e) => handleAmountChange(e.target.value)}
                           placeholder="0.00"
                           className={`pr-12 ${errors.amount ? "border-red-500" : ""}`}
+                          required
                         />
                         {data.amount && (
                           <Button
@@ -189,11 +285,9 @@ export default function InvestorTransactionsCreatePage({
                     </div>
 
                     {errors.amount && (
-                      <p className="text-sm text-red-500 mt-1">{errors.amount}</p>
-                    )}
-                    {data.amount && parseFloat(data.amount) <= 0 && (
-                      <p className="text-sm text-yellow-600 mt-1">
-                        Amount must be greater than 0
+                      <p className="text-sm text-red-500 mt-1 flex items-center gap-1">
+                        <AlertCircle className="h-3 w-3" />
+                        {errors.amount}
                       </p>
                     )}
                   </div>
@@ -211,6 +305,7 @@ export default function InvestorTransactionsCreatePage({
                       className={`w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
                         errors.investor_id ? "border-red-500" : "border-gray-300"
                       }`}
+                      required
                     >
                       <option value="">Select investor</option>
                       {investors.map((investor) => (
@@ -220,7 +315,10 @@ export default function InvestorTransactionsCreatePage({
                       ))}
                     </select>
                     {errors.investor_id && (
-                      <p className="text-sm text-red-500 mt-1">{errors.investor_id}</p>
+                      <p className="text-sm text-red-500 mt-1 flex items-center gap-1">
+                        <AlertCircle className="h-3 w-3" />
+                        {errors.investor_id}
+                      </p>
                     )}
                     {investors.length === 0 && (
                       <p className="text-sm text-yellow-600 mt-1">
@@ -231,7 +329,7 @@ export default function InvestorTransactionsCreatePage({
 
                   {/* Note */}
                   <div className="space-y-2 md:col-span-2">
-                    <Label htmlFor="note">Note</Label>
+                    <Label htmlFor="note">Note (Optional)</Label>
                     <Textarea
                       id="note"
                       value={data.note}
@@ -247,7 +345,10 @@ export default function InvestorTransactionsCreatePage({
                       <span>{data.note.length}/500</span>
                     </div>
                     {errors.note && (
-                      <p className="text-sm text-red-500 mt-1">{errors.note}</p>
+                      <p className="text-sm text-red-500 mt-1 flex items-center gap-1">
+                        <AlertCircle className="h-3 w-3" />
+                        {errors.note}
+                      </p>
                     )}
                   </div>
                 </div>
@@ -266,16 +367,25 @@ export default function InvestorTransactionsCreatePage({
                   {processing ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Saving...
+                      Creating...
                     </>
                   ) : (
-                    "Save Transaction"
+                    "Create Transaction"
                   )}
                 </Button>
               </div>
             </form>
           </CardContent>
         </Card>
+
+        {/* Password Confirmation Modal */}
+        <PasswordConfirmModal
+          isOpen={showPasswordModal}
+          onClose={() => setShowPasswordModal(false)}
+          onConfirm={handlePasswordConfirm}
+          action="create"
+          isLoading={processing}
+        />
       </div>
     </AppLayout>
   );

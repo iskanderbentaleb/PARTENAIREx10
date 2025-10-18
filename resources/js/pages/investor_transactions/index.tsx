@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { DataTable } from '../components/data-table';
 import { InvestorSummaryCard } from '../components/investor-summary-card';
 import { SelectFilter } from '../components/filters/select-filter';
@@ -21,10 +22,11 @@ import AppLayout from '@/layouts/app-layout';
 import { Head, Link, router } from '@inertiajs/react';
 import { toast } from 'sonner';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { PasswordConfirmModal } from '@/components/password-confirm-modal';
 
 // Breadcrumbs
-const breadcrumbs: BreadcrumbItem[] = [
-  { title: 'Investor Transactions', href: '/investor_transactions' },
+const breadcrumbs = [
+  { title: 'Investor Transactions', href: '/investor-transactions' },
 ];
 
 // InvestorTransaction type (based on Laravel model)
@@ -58,7 +60,6 @@ interface InvestorTransactionsPageProps {
   filters?: Record<string, any>;
   filterOptions?: Record<string, any>;
   summary?: Record<string, any>;
-  search?: string;
 }
 
 export default function InvestorTransactionsPage({
@@ -68,14 +69,35 @@ export default function InvestorTransactionsPage({
   filterOptions = {},
   summary = {}
 }: InvestorTransactionsPageProps) {
+  const [deleteModal, setDeleteModal] = useState<{
+    isOpen: boolean;
+    transactionId: number | null;
+  }>({ isOpen: false, transactionId: null });
 
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  // For date only (no time)
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
     return date.toLocaleDateString('en-US', {
       weekday: 'long',
       day: 'numeric',
       month: 'long',
-      year: 'numeric'
+      year: 'numeric',
+    });
+  };
+
+  // For date + time (used in created_at and updated_at)
+  const formatDateTime = (dateString: string) => {
+    const date = new Date(dateString);
+    return date.toLocaleString('en-US', {
+      weekday: 'long',
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
     });
   };
 
@@ -87,6 +109,34 @@ export default function InvestorTransactionsPage({
       minimumFractionDigits: 0,
       maximumFractionDigits: 0,
     }).format(numAmount);
+  };
+
+  const handleDeleteClick = (transactionId: number) => {
+    setDeleteModal({ isOpen: true, transactionId });
+  };
+
+  const handleDeleteConfirm = (password: string) => {
+    if (!deleteModal.transactionId) return;
+
+    setIsDeleting(true);
+
+    router.delete(route("investor_transactions.destroy", { id: deleteModal.transactionId }), {
+      data: { password },
+      onSuccess: () => {
+        setDeleteModal({ isOpen: false, transactionId: null });
+        toast.success("Transaction deleted successfully!");
+      },
+      onError: (errors) => {
+        if (errors.password) {
+          toast.error(errors.password);
+        } else {
+          toast.error("An error occurred while deleting the transaction.");
+        }
+      },
+      onFinish: () => {
+        setIsDeleting(false);
+      },
+    });
   };
 
   const columns: ColumnDef<InvestorTransaction>[] = [
@@ -189,20 +239,29 @@ export default function InvestorTransactionsPage({
       },
     },
     {
+      accessorKey: "created_at",
+      header: "Creation Date",
+      cell: ({ row }) => formatDateTime(row.getValue("created_at")),
+    },
+    {
+      accessorKey: "updated_at",
+      header: "Update Date",
+      cell: ({ row }) => {
+        const createdAt = row.getValue("created_at");
+        const updatedAt = row.getValue("updated_at");
+
+        // Only show if different
+        if (createdAt === updatedAt) return "—";
+
+        return formatDateTime(updatedAt);
+      },
+    },
+    {
       accessorKey: 'actions',
       header: () => <div className="text-center w-full">Actions</div>,
       cell: ({ row }) => {
         const transaction = row.original;
         const isLinked = transaction.purchase !== null || transaction.sale !== null;
-
-        const handleDelete = () => {
-          if (isLinked) return;
-
-          router.delete(route("investor_transactions.destroy", { id: transaction.id }), {
-            onSuccess: () => toast.success("Transaction deleted successfully!"),
-            onError: () => toast.error("An error occurred."),
-          });
-        };
 
         return (
           <div className="flex justify-center items-center space-x-1">
@@ -252,7 +311,11 @@ export default function InvestorTransactionsPage({
             ) : (
               <AlertDialog>
                 <AlertDialogTrigger asChild>
-                  <Button variant="ghost" size="sm">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => handleDeleteClick(transaction.id)}
+                  >
                     <Trash className="h-4 w-4" />
                   </Button>
                 </AlertDialogTrigger>
@@ -265,7 +328,12 @@ export default function InvestorTransactionsPage({
                   </AlertDialogHeader>
                   <AlertDialogFooter>
                     <AlertDialogCancel>Cancel</AlertDialogCancel>
-                    <AlertDialogAction onClick={handleDelete}>Delete</AlertDialogAction>
+                    <AlertDialogAction
+                      onClick={() => setDeleteModal({ isOpen: true, transactionId: transaction.id })}
+                      className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                    >
+                      Delete
+                    </AlertDialogAction>
                   </AlertDialogFooter>
                 </AlertDialogContent>
               </AlertDialog>
@@ -345,6 +413,15 @@ export default function InvestorTransactionsPage({
               />
             </>
           }
+        />
+
+        {/* Password Confirmation Modal for Delete */}
+        <PasswordConfirmModal
+          isOpen={deleteModal.isOpen}
+          onClose={() => setDeleteModal({ isOpen: false, transactionId: null })}
+          onConfirm={handleDeleteConfirm}
+          action="delete"
+          isLoading={isDeleting}
         />
       </div>
     </AppLayout>

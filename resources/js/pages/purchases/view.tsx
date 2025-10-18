@@ -9,7 +9,7 @@ import {
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { ArrowLeft, FileText, Download, Copy, Calendar, Package, BarChart3, ShoppingCart } from "lucide-react";
+import { ArrowLeft, FileText, Download, Copy, Calendar, Package, BarChart3, ShoppingCart, Tag, Percent, DollarSign, Clock } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
@@ -36,6 +36,7 @@ interface Item {
   quantity: number;
   quantity_selled: number;
   unit_price: number;
+  unit_price_with_discount: number;
   subtotal: number;
   sale_price: number;
 }
@@ -85,6 +86,7 @@ export default function PurchasesViewPage({ purchase }: Props) {
       ...item,
       quantity: Number(item.quantity),
       unit_price: Number(item.unit_price),
+      unit_price_with_discount: Number(item.unit_price_with_discount),
       subtotal: Number(item.subtotal),
       sale_price: Number(item.sale_price),
     })),
@@ -92,17 +94,44 @@ export default function PurchasesViewPage({ purchase }: Props) {
 
   const amountRemaining = processedPurchase.total - processedPurchase.amount_paid;
 
-  const formatCurrency = (value: number) => `${value.toFixed(2)} ${processedPurchase.currency}`;
 
-    const formatDate = (dateString: string) => {
-        const date = new Date(dateString);
-        return date.toLocaleDateString('en-US', {
-            weekday: 'long',
-            day: 'numeric',
-            month: 'long',
-            year: 'numeric'
-        });
+
+
+    const formatCurrency = (amount: number, currency: string = 'DZD'): string => {
+        return `${new Intl.NumberFormat('en-US', {
+            minimumFractionDigits: 0,
+            maximumFractionDigits: 0,
+        }).format(amount)} ${currency}`;
     };
+
+
+  const formatDateTime = (dateString: string) => {
+    const date = new Date(dateString);
+    return {
+      date: date.toLocaleDateString('en-US', {
+        weekday: 'long',
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric'
+      }),
+      time: date.toLocaleTimeString('en-US', {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: true
+      }),
+      full: date.toLocaleString('en-US', {
+        weekday: 'long',
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: true
+      })
+    };
+  };
 
   // Per-item sold %
   const getSoldPercentage = (item: Item) =>
@@ -140,6 +169,26 @@ export default function PurchasesViewPage({ purchase }: Props) {
       });
   };
 
+  // Calculate discount per unit and percentage
+  const getDiscountInfo = (item: Item) => {
+    if (item.unit_price === item.unit_price_with_discount) {
+      return { discountPerUnit: 0, discountPercentage: 0 };
+    }
+
+    const discountPerUnit = item.unit_price - item.unit_price_with_discount;
+    const discountPercentage = (discountPerUnit / item.unit_price) * 100;
+
+    return {
+      discountPerUnit,
+      discountPercentage: Math.round(discountPercentage * 100) / 100
+    };
+  };
+
+  // Format dates
+  const createdDateTime = formatDateTime(processedPurchase.created_at);
+  const updatedDateTime = formatDateTime(processedPurchase.updated_at);
+  const purchaseDateTime = formatDateTime(processedPurchase.purchase_date);
+
   return (
     <AppLayout
       breadcrumbs={breadcrumbs}
@@ -154,32 +203,39 @@ export default function PurchasesViewPage({ purchase }: Props) {
     >
       <Head title={`Purchase #${processedPurchase.id}`} />
 
-      <div className="py-6 px-4 md:px-8 space-y-10">
+      <div className="py-6 px-4 sm:px-6 lg:px-8 space-y-8">
         {/* Page header */}
-        <div className="flex flex-col gap-2 mb-6">
-          <div className="flex justify-between items-center">
-            <h1 className="text-3xl font-bold tracking-tight">Purchase Details</h1>
-            <span className="text-sm text-muted-foreground">#{processedPurchase.id}</span>
+        <div className="flex flex-col gap-2">
+          <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
+            <div>
+              <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Purchase Details</h1>
+              <p className="text-muted-foreground mt-1">
+                Overview of purchase information and sold quantities
+              </p>
+            </div>
+            <span className="text-sm text-muted-foreground bg-muted px-3 py-1 rounded-full self-start sm:self-auto">
+              #{processedPurchase.id}
+            </span>
           </div>
-          <p className="text-muted-foreground">
-            Overview of purchase information and sold quantities
-          </p>
         </div>
 
         {/* Overall Sold Percentage */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-xl">Overall Sold Quantity</CardTitle>
+        <Card className="shadow-sm">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-lg sm:text-xl flex items-center gap-2">
+              <BarChart3 className="h-5 w-5" />
+              Overall Sold Quantity
+            </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-4">
               <div className="flex-1 h-3 bg-secondary rounded-full overflow-hidden">
                 <div
                   className={cn("h-full transition-all rounded-full", overallColorClass)}
                   style={{ width: `${overallPercentage}%` }}
                 />
               </div>
-              <span className="text-sm font-medium text-muted-foreground">
+              <span className="text-sm font-medium text-muted-foreground whitespace-nowrap">
                 {totalSold}/{totalQuantity} ({overallPercentage}%)
               </span>
             </div>
@@ -187,38 +243,43 @@ export default function PurchasesViewPage({ purchase }: Props) {
         </Card>
 
         {/* Purchase Info */}
-        <Card>
+        <Card className="shadow-sm">
           <CardHeader>
-            <CardTitle className="text-xl">Purchase Information</CardTitle>
+            <CardTitle className="text-lg sm:text-xl">Purchase Information</CardTitle>
             <CardDescription>Basic details of this purchase</CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
               <div className="space-y-2">
-                <Label>Supplier</Label>
-                <div className="p-2 border rounded-md bg-muted/50">
-                  <p className="text-sm">{processedPurchase.supplier.name}</p>
+                <Label className="text-sm">Supplier</Label>
+                <div className="p-3 border rounded-lg bg-muted/30">
+                  <p className="text-sm font-medium">{processedPurchase.supplier.name}</p>
                 </div>
               </div>
 
               <div className="space-y-2">
-                <Label>Investor</Label>
-                <div className="p-2 border rounded-md bg-muted/50">
-                  <p className="text-sm">{processedPurchase.investor.name}</p>
+                <Label className="text-sm">Investor</Label>
+                <div className="p-3 border rounded-lg bg-muted/30">
+                  <p className="text-sm font-medium">{processedPurchase.investor.name}</p>
                 </div>
               </div>
 
               <div className="space-y-2">
-                <Label>Supplier Invoice Number</Label>
-                <div className="p-2 border rounded-md bg-muted/50">
-                  <p className="text-sm">{processedPurchase.supplier_invoice_number || "N/A"}</p>
+                <Label className="text-sm">Supplier Invoice Number</Label>
+                <div className="p-3 border rounded-lg bg-muted/30">
+                  <p className="text-sm font-medium">{processedPurchase.supplier_invoice_number || "N/A"}</p>
                 </div>
               </div>
 
               <div className="space-y-2">
-                <Label>Purchase Date</Label>
-                <div className="p-2 border rounded-md bg-muted/50">
-                  <p className="text-sm">{formatDate(processedPurchase.purchase_date)}</p>
+                <Label className="text-sm">Purchase Date & Time</Label>
+                <div className="p-3 border rounded-lg bg-muted/30">
+                  <div className="flex items-center gap-2 text-sm">
+                    <Calendar className="h-4 w-4 text-muted-foreground" />
+                    <div>
+                      <p className="font-medium">{purchaseDateTime.date}</p>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -226,73 +287,194 @@ export default function PurchasesViewPage({ purchase }: Props) {
         </Card>
 
         {/* Items */}
-        <Card>
+        <Card className="shadow-sm">
           <CardHeader>
-            <CardTitle className="text-xl">Purchase Items</CardTitle>
+            <CardTitle className="text-lg sm:text-xl">Purchase Items</CardTitle>
             <CardDescription>Products included in this purchase</CardDescription>
           </CardHeader>
 
           <CardContent className="text-sm">
-            <div className="rounded-md border overflow-x-auto">
-              <div className="grid grid-cols-16 gap-4 p-3 font-medium border-b text-xs">
+            <div className="rounded-lg border overflow-x-auto">
+              {/* Enhanced Header */}
+              <div className="grid grid-cols-16 gap-3 p-4 font-semibold border-b text-xs
+                              bg-muted/50 dark:bg-muted/20 text-muted-foreground dark:text-gray-300 min-w-[1200px]">
                 <div className="col-span-3">Product</div>
-                <div className="col-span-2">Barcode/Ref</div>
-                <div className="col-span-2">Generated Barcode/Ref</div>
+                <div className="col-span-2">Barcode / Ref</div>
+                <div className="col-span-2">Generated Barcode</div>
                 <div className="col-span-1 text-center">Qty</div>
                 <div className="col-span-2 text-center">Qty Sold (%)</div>
-                <div className="col-span-2 text-right">Purchase Price</div>
-                <div className="col-span-2 text-right">Sale Price</div>
-                <div className="col-span-2 text-right">Subtotal</div>
+
+                {/* Enhanced Price Column Header */}
+                <div className="col-span-3 text-center">
+                  <span className="font-bold text-xs">Pricing Details</span>
+                </div>
+
+                <div className="col-span-2 text-center">Sale Price</div>
+                <div className="col-span-1 text-center">Subtotal</div>
               </div>
 
               {processedPurchase.items.map((item, index) => {
                 const percentage = getSoldPercentage(item);
                 const colorClass = getColorClass(percentage);
+                const discountInfo = getDiscountInfo(item);
+                const hasDiscount = discountInfo.discountPerUnit > 0;
 
                 return (
                   <div
                     key={index}
-                    className="grid grid-cols-16 gap-4 p-3 border-b last:border-b-0 items-center"
+                    className="grid grid-cols-16 gap-3 p-4 border-b last:border-b-0 items-center hover:bg-muted/10 transition-colors min-w-[1200px]"
                   >
-                    <div className="col-span-3 font-medium">{item.product_name}</div>
-
-                    <div className="col-span-2 text-sm text-muted-foreground">
-                      {item.barcode_prinsipal || "N/A"}
+                    <div className="col-span-3 font-medium">
+                      <p className="line-clamp-2">{item.product_name}</p>
                     </div>
 
-                    <div className="col-span-2 flex items-center gap-1">
+                    <div className="col-span-2">
+                      <p className="text-muted-foreground text-xs line-clamp-2">
+                        {item.barcode_prinsipal || "N/A"}
+                      </p>
+                    </div>
+
+                    <div className="col-span-2 flex items-center gap-2">
                       {item.barcode_generated && (
                         <Button
                           size="icon"
                           variant="outline"
+                          className="h-6 w-6 flex-shrink-0"
                           onClick={() => copyToClipboard(item.barcode_generated)}
                         >
                           <Copy className="h-3 w-3" />
                         </Button>
                       )}
-                      <p className="text-sm text-muted-foreground truncate">
+                      <p className="text-muted-foreground text-xs line-clamp-2 flex-1">
                         {item.barcode_generated || "N/A"}
                       </p>
                     </div>
 
-                    <div className="col-span-1 text-center">{item.quantity}</div>
-
-                    <div className="col-span-2 flex flex-col items-center">
-                      <p className="text-xs font-medium">{item.quantity_selled}</p>
-                      <div className="w-full h-2 bg-secondary rounded-full overflow-hidden mt-1">
-                        <div
-                          className={cn("h-full transition-all rounded-full", colorClass)}
-                          style={{ width: `${percentage}%` }}
-                        />
-                      </div>
-                      <span className="text-xs text-muted-foreground mt-1">
-                        {percentage}%
+                    <div className="col-span-1 text-center">
+                      <span className="font-semibold bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-300 px-2 py-1 rounded text-xs">
+                        {item.quantity}
                       </span>
                     </div>
 
-                    <div className="col-span-2 text-right">{formatCurrency(item.unit_price)}</div>
-                    <div className="col-span-2 text-right">{formatCurrency(item.sale_price)}</div>
-                    <div className="col-span-2 text-right font-medium">{formatCurrency(item.subtotal)}</div>
+                    <div className="col-span-2">
+                      <div className="flex flex-col items-center space-y-2">
+                        <div className="flex items-center gap-2 w-full">
+                          <span className="text-xs font-medium bg-green-50 dark:bg-green-950/30 text-green-700 dark:text-green-300 px-2 py-1 rounded">
+                            {item.quantity_selled}
+                          </span>
+                          <span className="text-xs text-muted-foreground font-medium">
+                            {percentage}%
+                          </span>
+                        </div>
+                        <div className="w-full h-2 bg-secondary rounded-full overflow-hidden">
+                          <div
+                            className={cn("h-full transition-all rounded-full", colorClass)}
+                            style={{ width: `${percentage}%` }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Enhanced Price Column */}
+                    <div className="col-span-3 space-y-3">
+                      <div className="grid grid-cols-2 gap-3">
+                        {/* Original Price */}
+                        <div className={cn(
+                          "border rounded-lg p-3 transition-all duration-200",
+                          hasDiscount
+                            ? "bg-red-50 dark:bg-red-950/20 border-red-200 dark:border-red-800"
+                            : "bg-gray-50 dark:bg-gray-800/50 border-gray-200 dark:border-gray-700"
+                        )}>
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-[10px] font-medium text-gray-600 dark:text-gray-400">
+                              Original
+                            </span>
+                            {!hasDiscount && (
+                              <Tag className="h-3 w-3 text-green-600" />
+                            )}
+                          </div>
+                          <p className={cn(
+                            "font-bold text-sm",
+                            hasDiscount
+                              ? "text-red-600 dark:text-red-400 line-through"
+                              : "text-green-600 dark:text-green-400"
+                          )}>
+                            {formatCurrency(item.unit_price)}
+                          </p>
+                        </div>
+
+                        {/* Final Price with Discount */}
+                        <div className={cn(
+                          "border rounded-lg p-3 transition-all duration-200",
+                          hasDiscount
+                            ? "bg-emerald-50 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-800 shadow-sm"
+                            : "bg-gray-50 dark:bg-gray-800/50 border-gray-200 dark:border-gray-700 opacity-60"
+                        )}>
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-[10px] font-medium text-gray-600 dark:text-gray-400">
+                              Final
+                            </span>
+                            {hasDiscount && (
+                              <Percent className="h-3 w-3 text-emerald-600" />
+                            )}
+                          </div>
+                          <p className={cn(
+                            "font-bold text-sm",
+                            hasDiscount
+                              ? "text-emerald-600 dark:text-emerald-400"
+                              : "text-gray-600 dark:text-gray-400"
+                          )}>
+                            {formatCurrency(item.unit_price_with_discount)}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Discount Details */}
+                      {hasDiscount && (
+                        <div className="bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-950/20 dark:to-orange-950/20 border border-amber-200 dark:border-amber-700 rounded-lg p-3">
+                          <div className="flex justify-between items-center text-[10px] mb-1">
+                            <span className="font-medium text-amber-700 dark:text-amber-300">
+                              Discount Applied
+                            </span>
+                            <div className="text-right">
+                              <div className="font-bold text-amber-700 dark:text-amber-300">
+                                -{formatCurrency(discountInfo.discountPerUnit)}
+                              </div>
+                              <div className="text-amber-600 dark:text-amber-400">
+                                ({discountInfo.discountPercentage}%)
+                              </div>
+                            </div>
+                          </div>
+                          <div className="text-[9px] text-amber-600 dark:text-amber-400 text-center">
+                            Purchase Price - (Discount / Quantities)
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Sale Price */}
+                    <div className="col-span-2">
+                      <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-700 rounded-lg p-3 text-center">
+                        <p className="text-[10px] text-gray-600 dark:text-gray-400 font-medium mb-1">
+                          Sale Price
+                        </p>
+                        <p className="text-blue-600 dark:text-blue-400 font-bold text-sm">
+                          {formatCurrency(item.sale_price)}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Subtotal */}
+                    <div className="col-span-1">
+                      <div className="bg-purple-50 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-700 rounded-lg p-3 text-center">
+                        <p className="text-[10px] text-gray-600 dark:text-gray-400 font-medium mb-1">
+                          Subtotal
+                        </p>
+                        <p className="text-purple-600 dark:text-purple-400 font-bold text-sm">
+                          {formatCurrency(item.subtotal)}
+                        </p>
+                      </div>
+                    </div>
                   </div>
                 );
               })}
@@ -302,58 +484,58 @@ export default function PurchasesViewPage({ purchase }: Props) {
 
         {/* Financial Details */}
         <div className="flex justify-end">
-          <Card className="w-full md:w-1/2">
+          <Card className="w-full lg:w-1/2 xl:w-2/5 shadow-sm">
             <CardHeader>
-              <CardTitle className="text-xl">Financial Details</CardTitle>
+              <CardTitle className="text-lg sm:text-xl">Financial Summary</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid gap-4">
-                <div className="flex justify-between items-center">
+                <div className="flex justify-between items-center py-2">
                   <Label>Subtotal</Label>
-                  <p className="font-semibold">{formatCurrency(processedPurchase.subtotal)}</p>
+                  <p className="font-semibold text-lg">{formatCurrency(processedPurchase.subtotal)}</p>
                 </div>
 
                 {processedPurchase.discount_value > 0 && (
-                  <div className="flex justify-between items-center">
+                  <div className="flex justify-between items-center py-2 border-t">
                     <div>
-                      <Label>Discount</Label>
+                      <Label className="text-destructive">Discount</Label>
                       {processedPurchase.discount_reason && (
-                        <p className="text-xs text-muted-foreground">{processedPurchase.discount_reason}</p>
+                        <p className="text-xs text-muted-foreground mt-1">{processedPurchase.discount_reason}</p>
                       )}
                     </div>
-                    <p className="font-semibold text-destructive">
+                    <p className="font-semibold text-destructive text-lg">
                       -{formatCurrency(processedPurchase.discount_value)}
                     </p>
                   </div>
                 )}
 
                 {processedPurchase.shipping_value > 0 && (
-                  <div className="flex justify-between items-center">
+                  <div className="flex justify-between items-center py-2 border-t">
                     <div>
                       <Label>Shipping</Label>
                       {processedPurchase.shipping_note && (
-                        <p className="text-xs text-muted-foreground">{processedPurchase.shipping_note}</p>
+                        <p className="text-xs text-muted-foreground mt-1">{processedPurchase.shipping_note}</p>
                       )}
                     </div>
-                    <p className="font-semibold">+{formatCurrency(processedPurchase.shipping_value)}</p>
+                    <p className="font-semibold text-lg">+{formatCurrency(processedPurchase.shipping_value)}</p>
                   </div>
                 )}
 
-                <div className="flex justify-between items-center pt-4 border-t">
-                  <Label className="text-base">Total Amount</Label>
-                  <p className="text-lg font-bold">{formatCurrency(processedPurchase.total)}</p>
+                <div className="flex justify-between items-center py-3 border-t-2 border-double">
+                  <Label className="text-base font-bold">Total Amount</Label>
+                  <p className="text-xl font-bold text-primary">{formatCurrency(processedPurchase.total)}</p>
                 </div>
 
-                <div className="flex justify-between items-center">
+                <div className="flex justify-between items-center py-2">
                   <Label>Amount Paid</Label>
-                  <p className="font-semibold">{formatCurrency(processedPurchase.amount_paid)}</p>
+                  <p className="font-semibold text-lg text-green-600">{formatCurrency(processedPurchase.amount_paid)}</p>
                 </div>
 
-                <div className="flex justify-between items-center">
+                <div className="flex justify-between items-center py-2 border-t">
                   <Label>Amount Remaining</Label>
                   <p
                     className={cn(
-                      "font-semibold",
+                      "font-semibold text-lg",
                       amountRemaining > 0 ? "text-amber-600" : "text-green-600"
                     )}
                   >
@@ -365,43 +547,93 @@ export default function PurchasesViewPage({ purchase }: Props) {
           </Card>
         </div>
 
-        {/* Metadata */}
-        <Card>
+        {/* Enhanced Metadata */}
+        <Card className="shadow-sm">
           <CardHeader>
-            <CardTitle className="text-xl">Metadata</CardTitle>
-            <CardDescription>Additional information about this purchase</CardDescription>
+            <CardTitle className="text-lg sm:text-xl">Metadata</CardTitle>
+            <CardDescription>Detailed timeline and information about this purchase</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <div className="space-y-4">
-                <div className="space-y-2">
-                  <Label>Created Date</Label>
-                  <div className="flex items-center gap-2 p-2 border rounded-md bg-muted/50">
-                    <Calendar className="h-4 w-4 text-muted-foreground" />
-                    <span className="text-sm">{formatDate(processedPurchase.created_at)}</span>
+                <div className="space-y-3">
+                  <Label className="text-sm font-medium">Created Date & Time</Label>
+                  <div className="p-4 border rounded-lg bg-muted/30 space-y-2">
+                    <div className="flex items-center gap-3">
+                      <Calendar className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                      <div className="flex-1">
+                        <p className="text-sm font-medium">{createdDateTime.date}</p>
+                        <div className="flex items-center gap-2 mt-1">
+                          <Clock className="h-3 w-3 text-muted-foreground" />
+                          <p className="text-xs text-muted-foreground">{createdDateTime.time}</p>
+                        </div>
+                      </div>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-2">
+                      {createdDateTime.full}
+                    </p>
                   </div>
                 </div>
-                <div className="space-y-2">
-                  <Label>Last Updated</Label>
-                  <div className="flex items-center gap-2 p-2 border rounded-md bg-muted/50">
-                    <Calendar className="h-4 w-4 text-muted-foreground" />
-                    <span className="text-sm">{formatDate(processedPurchase.updated_at)}</span>
+
+                <div className="space-y-3">
+                  <Label className="text-sm font-medium">Last Updated</Label>
+                  <div className="p-4 border rounded-lg bg-muted/30 space-y-2">
+                    <div className="flex items-center gap-3">
+                      <Calendar className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                      <div className="flex-1">
+                        <p className="text-sm font-medium">{updatedDateTime.date}</p>
+                        <div className="flex items-center gap-2 mt-1">
+                          <Clock className="h-3 w-3 text-muted-foreground" />
+                          <p className="text-xs text-muted-foreground">{updatedDateTime.time}</p>
+                        </div>
+                      </div>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-2">
+                      {updatedDateTime.full}
+                    </p>
                   </div>
                 </div>
               </div>
+
               <div className="space-y-4">
-                <div className="space-y-2">
-                  <Label>Total Products</Label>
-                  <div className="flex items-center gap-2 p-2 border rounded-md bg-muted/50">
-                    <Package className="h-4 w-4 text-muted-foreground" />
-                    <span className="text-sm font-medium">{totalProducts}</span>
+                <div className="space-y-3">
+                  <Label className="text-sm font-medium">Products Summary</Label>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="p-4 border rounded-lg bg-muted/30 text-center">
+                      <div className="flex items-center justify-center gap-2 mb-2">
+                        <Package className="h-4 w-4 text-muted-foreground" />
+                        <span className="text-sm font-medium">Total Products</span>
+                      </div>
+                      <p className="text-2xl font-bold text-primary">{totalProducts}</p>
+                    </div>
+
+                    <div className="p-4 border rounded-lg bg-muted/30 text-center">
+                      <div className="flex items-center justify-center gap-2 mb-2">
+                        <ShoppingCart className="h-4 w-4 text-muted-foreground" />
+                        <span className="text-sm font-medium">Total Quantity</span>
+                      </div>
+                      <p className="text-2xl font-bold text-primary">{totalQuantity}</p>
+                    </div>
                   </div>
                 </div>
-                <div className="space-y-2">
-                  <Label>Total Quantity</Label>
-                  <div className="flex items-center gap-2 p-2 border rounded-md bg-muted/50">
-                    <ShoppingCart className="h-4 w-4 text-muted-foreground" />
-                    <span className="text-sm font-medium">{totalQuantity}</span>
+
+                <div className="space-y-3">
+                  <Label className="text-sm font-medium">Sales Performance</Label>
+                  <div className="p-4 border rounded-lg bg-muted/30">
+                    <div className="flex justify-between items-center mb-3">
+                      <span className="text-sm font-medium">Sold Progress</span>
+                      <span className="text-sm font-bold text-primary">{overallPercentage}%</span>
+                    </div>
+                    <div className="w-full h-2 bg-secondary rounded-full overflow-hidden">
+                      <div
+                        className={cn("h-full transition-all rounded-full", overallColorClass)}
+                        style={{ width: `${overallPercentage}%` }}
+                      />
+                    </div>
+                    <div className="flex justify-between items-center mt-2 text-xs text-muted-foreground">
+                      <span>{totalSold} sold</span>
+                      <span>{totalQuantity - totalSold} remaining</span>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -411,21 +643,21 @@ export default function PurchasesViewPage({ purchase }: Props) {
 
         {/* File Attachment */}
         {processedPurchase.invoice_image && (
-          <Card>
+          <Card className="shadow-sm">
             <CardHeader>
-              <CardTitle className="text-xl">Invoice Attachment</CardTitle>
+              <CardTitle className="text-lg sm:text-xl">Invoice Attachment</CardTitle>
               <CardDescription>Document associated with this purchase</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="flex items-center gap-3 p-3 border rounded-md">
-                <FileText className="h-5 w-5 text-muted-foreground" />
-                <div className="flex-1">
-                  <p className="text-sm font-medium">Invoice File</p>
-                  <p className="text-xs text-muted-foreground">
+              <div className="flex flex-col sm:flex-row sm:items-center gap-4 p-4 border rounded-lg bg-muted/30">
+                <FileText className="h-8 w-8 text-muted-foreground flex-shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium truncate">Invoice File</p>
+                  <p className="text-xs text-muted-foreground truncate">
                     {processedPurchase.invoice_image.split("/").pop()}
                   </p>
                 </div>
-                <Button variant="outline" size="sm" asChild>
+                <Button variant="outline" size="sm" asChild className="flex-shrink-0">
                   <a
                     href={`/storage/${processedPurchase.invoice_image}`}
                     target="_blank"
@@ -441,13 +673,13 @@ export default function PurchasesViewPage({ purchase }: Props) {
         )}
 
         {processedPurchase.note && (
-          <Card>
+          <Card className="shadow-sm">
             <CardHeader>
-              <CardTitle className="text-xl">Additional Information - NOTE</CardTitle>
+              <CardTitle className="text-lg sm:text-xl">Additional Notes</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="p-3 border rounded-md bg-muted/50">
-                <p className="text-sm whitespace-pre-wrap">{processedPurchase.note}</p>
+              <div className="p-4 border rounded-lg bg-muted/30">
+                <p className="text-sm whitespace-pre-wrap leading-relaxed">{processedPurchase.note}</p>
               </div>
             </CardContent>
           </Card>

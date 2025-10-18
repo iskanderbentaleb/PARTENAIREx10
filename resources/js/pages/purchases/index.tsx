@@ -70,6 +70,16 @@ export default function PurchasesPage({
     });
   };
 
+  const formatCurrency = (amount: string) => {
+    const numAmount = parseFloat(amount);
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'DZD',
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(numAmount);
+  };
+
   const columns: ColumnDef<Purchase>[] = [
     { accessorKey: 'id', header: 'ID' },
     { accessorKey: 'supplier_invoice_number', header: 'Invoice No.' },
@@ -117,7 +127,11 @@ export default function PurchasesPage({
         );
       },
     },
-    { accessorKey: 'total', header: 'Total' },
+    {
+        accessorKey: 'total',
+        header: 'Total',
+        cell: ({ row }) => formatCurrency(row.original.total)
+    },
     {
       accessorKey: 'actions',
       header: () => <div className="text-center w-full">Actions</div>,

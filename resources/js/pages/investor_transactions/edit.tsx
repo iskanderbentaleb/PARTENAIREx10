@@ -1,14 +1,16 @@
-import React from "react";
+import React, { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import AppLayout from "@/layouts/app-layout";
-import { Head, Link, useForm, usePage } from "@inertiajs/react";
+import { Head, Link, useForm, usePage, router } from "@inertiajs/react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Loader2, Calendar, User, FileText, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
+import { PasswordConfirmModal } from "@/components/password-confirm-modal";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
 type BreadcrumbItem = {
   title: string;
@@ -39,7 +41,7 @@ type PageProps = {
 export default function InvestorTransactionsEditPage() {
   const { transaction, investors } = usePage<PageProps>().props;
 
-  const { data, setData, put, processing, errors, recentlySuccessful } = useForm({
+  const { data, setData, processing, errors } = useForm({
     date: transaction.date || new Date().toISOString().split('T')[0],
     type: transaction.type || "In",
     amount: transaction.amount || "",
@@ -47,8 +49,43 @@ export default function InvestorTransactionsEditPage() {
     investor_id: transaction.investor_id?.toString() || "",
   });
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [formDataForSubmission, setFormDataForSubmission] = useState({});
+
+  // Validate date string and check if it's in the future
+  const isValidDate = (dateString: string): { isValid: boolean; isFuture: boolean; date: Date | null } => {
+    // Parse the date string (YYYY-MM-DD format from input)
+    const [year, month, day] = dateString.split('-').map(Number);
+    const date = new Date(year, month - 1, day); // month is 0-indexed in JavaScript
+
+    // Check if the date is valid
+    if (isNaN(date.getTime())) {
+      return { isValid: false, isFuture: false, date: null };
+    }
+
+    // Create today's date without time component for accurate comparison
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    // Compare dates (ignoring time)
+    const selectedDate = new Date(date);
+    selectedDate.setHours(0, 0, 0, 0);
+
+    return {
+      isValid: true,
+      isFuture: selectedDate > today,
+      date: selectedDate
+    };
+  };
+
+  const handleFormSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+
+    // Check if transaction is linked to other records
+    if (isLinkedToOtherRecords) {
+      toast.error("This transaction is linked to other records and cannot be edited.");
+      return;
+    }
 
     // Client-side validation
     if (!data.date || !data.amount || !data.investor_id) {
@@ -56,31 +93,57 @@ export default function InvestorTransactionsEditPage() {
       return;
     }
 
+    // Validate date format and future date
+    const dateValidation = isValidDate(data.date);
+    if (!dateValidation.isValid) {
+      toast.error("Please enter a valid date");
+      return;
+    }
+
+    if (dateValidation.isFuture) {
+      const formattedDate = dateValidation.date?.toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
+      });
+      toast.error(`${formattedDate} is in the future. Please select a valid date.`);
+      return;
+    }
+
+    // Validate amount is positive
     const amountValue = parseFloat(data.amount);
     if (isNaN(amountValue) || amountValue <= 0) {
-      toast.error("Amount must be a valid number greater than 0");
+      toast.error("Amount must be a number greater than 0");
       return;
     }
 
-    if (new Date(data.date) > new Date()) {
-      toast.error("Transaction date cannot be in the future");
-      return;
-    }
+    // Store the form data for later submission and show password modal
+    setFormDataForSubmission({ ...data });
+    setShowPasswordModal(true);
+  };
 
-    put(`/investor_transactions/${transaction.id}`, {
+  const handlePasswordConfirm = (password: string) => {
+    // Use router.put instead of useForm's put to get proper error handling
+    router.put(`/investor_transactions/${transaction.id}`, {
+      ...formDataForSubmission,
+      password,
+    }, {
+      onSuccess: () => {
+        setShowPasswordModal(false);
+        toast.success("Investor transaction updated successfully!");
+      },
       onError: (errors) => {
-        if (errors.investor_id) {
-          toast.error("Invalid investor selection");
-        } else if (errors.amount) {
-          toast.error("Invalid amount");
+        if (errors.password) {
+          // Password error - show in toast and keep modal open
+          toast.error(errors.password);
         } else {
-          toast.error("Failed to update transaction");
+          // Other form errors - close modal and they will be displayed automatically
+          setShowPasswordModal(false);
+          if (Object.keys(errors).length > 0) {
+            toast.error("Please check the form for errors.");
+          }
         }
       },
-      onSuccess: () => {
-        toast.success("Transaction updated successfully");
-      },
-      preserveScroll: true,
     });
   };
 
@@ -104,11 +167,13 @@ export default function InvestorTransactionsEditPage() {
     { title: "Edit", href: `/investor_transactions/${transaction.id}/edit` },
   ];
 
-  const isFormValid = data.date && data.amount && data.investor_id &&
-                     parseFloat(data.amount) > 0 &&
-                     new Date(data.date) <= new Date();
-
   const isLinkedToOtherRecords = transaction.purchase_id !== null || transaction.sale_id !== null;
+
+  const isFormValid = data.date && data.amount && data.investor_id &&
+                     parseFloat(data.amount) > 0;
+
+  // Check if there are any errors
+  const hasErrors = Object.keys(errors).length > 0;
 
   return (
     <AppLayout
@@ -130,7 +195,7 @@ export default function InvestorTransactionsEditPage() {
             <div className="flex items-center justify-between">
               <CardTitle className="text-xl font-bold flex items-center gap-2">
                 <FileText className="h-5 w-5" />
-                Edit Investor Transaction
+                Edit Investor Transaction #{transaction.id}
               </CardTitle>
               <Badge variant={transaction.type === "In" ? "default" : "secondary"}>
                 {transaction.type === "In" ? "Cash In" : "Cash Out"}
@@ -138,33 +203,49 @@ export default function InvestorTransactionsEditPage() {
             </div>
 
             {isLinkedToOtherRecords && (
-              <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-md">
-                <div className="flex items-center gap-2 text-yellow-800">
-                  <AlertCircle className="h-4 w-4" />
-                  <span className="text-sm font-medium">
-                    This transaction is linked to other records and cannot be edited
-                  </span>
-                </div>
-              </div>
+              <Alert variant="destructive" className="mt-4">
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription>
+                  This transaction is linked to other records and cannot be edited or deleted.
+                </AlertDescription>
+              </Alert>
             )}
           </CardHeader>
 
           <CardContent className="flex flex-col flex-1 space-y-6">
+            {/* Global Error Alert - Show when there are ANY errors */}
+            {hasErrors && (
+              <Alert variant="destructive">
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription>
+                  Please fix the errors below before proceeding.
+                </AlertDescription>
+              </Alert>
+            )}
+
             {/* Transaction Info */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-gray-50 dark:bg-zinc-900 rounded-lg">
               <div className="text-sm">
                 <span className="font-medium">Created:</span>{" "}
-                {new Date(transaction.created_at).toLocaleDateString()}
+                {new Date(transaction.created_at).toLocaleDateString('en-US', {
+                  year: 'numeric',
+                  month: 'long',
+                  day: 'numeric'
+                })}
               </div>
               <div className="text-sm">
                 <span className="font-medium">Last Updated:</span>{" "}
-                {new Date(transaction.updated_at).toLocaleDateString()}
+                {new Date(transaction.updated_at).toLocaleDateString('en-US', {
+                  year: 'numeric',
+                  month: 'long',
+                  day: 'numeric'
+                })}
               </div>
             </div>
 
             {/* Form */}
             <form
-              onSubmit={handleSubmit}
+              onSubmit={handleFormSubmit}
               className="flex flex-col flex-1 justify-between"
               noValidate
             >
@@ -181,19 +262,22 @@ export default function InvestorTransactionsEditPage() {
                       type="date"
                       value={data.date}
                       onChange={(e) => setData("date", e.target.value)}
-                      className={errors.date ? "border-red-500" : ""}
                       max={new Date().toISOString().split('T')[0]}
+                      className={errors.date ? "border-red-500" : ""}
                       disabled={isLinkedToOtherRecords || processing}
+                      required
                     />
+                    <p className="text-xs text-gray-500">
+                      Maximum allowed date: {new Date().toLocaleDateString('en-US', {
+                        year: 'numeric',
+                        month: 'long',
+                        day: 'numeric'
+                      })}
+                    </p>
                     {errors.date && (
                       <p className="text-sm text-red-500 mt-1 flex items-center gap-1">
-                        {errors.date}
-                      </p>
-                    )}
-                    {new Date(data.date) > new Date() && (
-                      <p className="text-sm text-yellow-600 mt-1 flex items-center gap-1">
                         <AlertCircle className="h-3 w-3" />
-                        Date cannot be in the future
+                        {errors.date}
                       </p>
                     )}
                   </div>
@@ -211,12 +295,16 @@ export default function InvestorTransactionsEditPage() {
                         errors.type ? "border-red-500" : "border-gray-300"
                       }`}
                       disabled={isLinkedToOtherRecords || processing}
+                      required
                     >
                       <option value="In">In - إدخال أموال للخزينة</option>
                       <option value="Out">Out - إخراج أموال من الخزينة</option>
                     </select>
                     {errors.type && (
-                      <p className="text-sm text-red-500 mt-1">{errors.type}</p>
+                      <p className="text-sm text-red-500 mt-1 flex items-center gap-1">
+                        <AlertCircle className="h-3 w-3" />
+                        {errors.type}
+                      </p>
                     )}
                   </div>
 
@@ -224,9 +312,9 @@ export default function InvestorTransactionsEditPage() {
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
                       <Label htmlFor="amount">
-                        Amount <span className="text-red-500">*</span>
+                        Amount (DZD) <span className="text-red-500">*</span>
                       </Label>
-                      <div className="text-xs text-gray-400">DA</div>
+                      <div className="text-xs text-gray-400">Must be greater than 0</div>
                     </div>
 
                     <div className="flex gap-2">
@@ -240,6 +328,7 @@ export default function InvestorTransactionsEditPage() {
                           placeholder="0.00"
                           className={`pr-12 ${errors.amount ? "border-red-500" : ""}`}
                           disabled={isLinkedToOtherRecords || processing}
+                          required
                         />
                         {data.amount && (
                           <Button
@@ -257,11 +346,9 @@ export default function InvestorTransactionsEditPage() {
                     </div>
 
                     {errors.amount && (
-                      <p className="text-sm text-red-500 mt-1">{errors.amount}</p>
-                    )}
-                    {data.amount && parseFloat(data.amount) <= 0 && (
-                      <p className="text-sm text-yellow-600 mt-1">
-                        Amount must be greater than 0
+                      <p className="text-sm text-red-500 mt-1 flex items-center gap-1">
+                        <AlertCircle className="h-3 w-3" />
+                        {errors.amount}
                       </p>
                     )}
                   </div>
@@ -280,6 +367,7 @@ export default function InvestorTransactionsEditPage() {
                         errors.investor_id ? "border-red-500" : "border-gray-300"
                       }`}
                       disabled={isLinkedToOtherRecords || processing}
+                      required
                     >
                       <option value="">Select investor</option>
                       {investors.map((investor) => (
@@ -289,7 +377,10 @@ export default function InvestorTransactionsEditPage() {
                       ))}
                     </select>
                     {errors.investor_id && (
-                      <p className="text-sm text-red-500 mt-1">{errors.investor_id}</p>
+                      <p className="text-sm text-red-500 mt-1 flex items-center gap-1">
+                        <AlertCircle className="h-3 w-3" />
+                        {errors.investor_id}
+                      </p>
                     )}
                     {investors.length === 0 && (
                       <p className="text-sm text-yellow-600 mt-1">
@@ -300,7 +391,7 @@ export default function InvestorTransactionsEditPage() {
 
                   {/* Note */}
                   <div className="space-y-2 md:col-span-2">
-                    <Label htmlFor="note">Note</Label>
+                    <Label htmlFor="note">Note (Optional)</Label>
                     <Textarea
                       id="note"
                       value={data.note}
@@ -317,7 +408,10 @@ export default function InvestorTransactionsEditPage() {
                       <span>{data.note?.length || 0}/500</span>
                     </div>
                     {errors.note && (
-                      <p className="text-sm text-red-500 mt-1">{errors.note}</p>
+                      <p className="text-sm text-red-500 mt-1 flex items-center gap-1">
+                        <AlertCircle className="h-3 w-3" />
+                        {errors.note}
+                      </p>
                     )}
                   </div>
                 </div>
@@ -344,7 +438,7 @@ export default function InvestorTransactionsEditPage() {
                       Updating...
                     </>
                   ) : isLinkedToOtherRecords ? (
-                    "Cannot Edit Linked Transaction"
+                    "Cannot Edit (Linked Transaction)"
                   ) : (
                     "Update Transaction"
                   )}
@@ -353,6 +447,15 @@ export default function InvestorTransactionsEditPage() {
             </form>
           </CardContent>
         </Card>
+
+        {/* Password Confirmation Modal */}
+        <PasswordConfirmModal
+          isOpen={showPasswordModal}
+          onClose={() => setShowPasswordModal(false)}
+          onConfirm={handlePasswordConfirm}
+          action="update"
+          isLoading={processing}
+        />
       </div>
     </AppLayout>
   );

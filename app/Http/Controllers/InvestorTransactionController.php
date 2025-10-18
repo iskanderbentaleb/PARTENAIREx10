@@ -6,8 +6,11 @@ use App\Models\Investor;
 use App\Models\InvestorTransaction;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
+use Carbon\Carbon;
 
 class InvestorTransactionController extends Controller
 {
@@ -125,6 +128,7 @@ class InvestorTransactionController extends Controller
                     }
                 },
             ],
+            'password'    => 'required|string',
         ], [
             'date.required' => 'The transaction date is required.',
             'date.before_or_equal' => 'Transaction date cannot be in the future.',
@@ -134,6 +138,15 @@ class InvestorTransactionController extends Controller
             'investor_id.exists' => 'The selected investor is invalid.',
         ]);
 
+        // Verify password
+        if (!Hash::check($validated['password'], Auth::user()->password)) {
+            return back()
+                ->withErrors(['password' => 'Invalid password. Please try again.'])
+                ->withInput();
+        }
+
+        // Remove password from data before creating
+        unset($validated['password']);
         $validated['user_id'] = Auth::id();
 
         try {
@@ -176,7 +189,7 @@ class InvestorTransactionController extends Controller
         return Inertia::render('investor_transactions/edit', [
             'transaction' => [
                 'id'          => $transaction->id,
-                'date'        => $transaction->date, // Already formatted as Y-m-d from model
+                'date'        => $transaction->date,
                 'type'        => $transaction->type,
                 'amount'      => (string) $transaction->amount,
                 'note'        => $transaction->note,
@@ -223,6 +236,7 @@ class InvestorTransactionController extends Controller
                     }
                 },
             ],
+            'password'    => 'required|string',
         ], [
             'date.required' => 'The transaction date is required.',
             'date.before_or_equal' => 'Transaction date cannot be in the future.',
@@ -236,6 +250,16 @@ class InvestorTransactionController extends Controller
             'investor_id.exists' => 'The selected investor is invalid.',
             'note.max' => 'Note cannot exceed :max characters.',
         ]);
+
+        // Verify password
+        if (!Hash::check($validated['password'], Auth::user()->password)) {
+            return back()
+                ->withErrors(['password' => 'Invalid password. Please try again.'])
+                ->withInput();
+        }
+
+        // Remove password from data before updating
+        unset($validated['password']);
 
         try {
             $transaction->update($validated);
@@ -260,13 +284,24 @@ class InvestorTransactionController extends Controller
     /**
      * Remove the specified resource from storage.
      */
-    public function destroy($id)
+    public function destroy(Request $request, $id)
     {
+        $request->validate([
+            'password' => 'required|string'
+        ]);
+
         $transaction = InvestorTransaction::findOrFail($id);
 
         if ($transaction->purchase_id !== null || $transaction->sale_id !== null) {
             return redirect()->route('investor_transactions')
                 ->with('error', 'This transaction is linked to a purchase or sale and cannot be deleted.');
+        }
+
+        // Verify password
+        if (!Hash::check($request->password, Auth::user()->password)) {
+            return back()
+                ->withErrors(['password' => 'Invalid password. Please try again.'])
+                ->withInput();
         }
 
         $transaction->delete();

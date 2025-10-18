@@ -248,15 +248,23 @@ export default function InvestorsPage({ investors, paginationLinks, totals }: In
               </Link>
             </Button>
             <AlertDialog>
-              <AlertDialogTrigger asChild>
+                <AlertDialogTrigger asChild>
                 <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-8 w-8 p-0 text-red-600 hover:text-red-800 hover:bg-red-50 dark:text-red-500 dark:hover:text-red-400 dark:hover:bg-red-900/20"
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 w-8 p-0 text-red-600 hover:text-red-800 hover:bg-red-50 dark:text-red-500 dark:hover:text-red-400 dark:hover:bg-red-900/20"
+                    disabled={
+                    (investor.profit ?? 0) !== 0 || (investor.total_capital ?? 0) !== 0
+                    }
+                    title={
+                    (investor.profit ?? 0) !== 0 || (investor.total_capital ?? 0) !== 0
+                        ? "Cannot delete investor with active profit/loss or capital"
+                        : "Delete investor"
+                    }
                 >
-                  <Trash className="h-4 w-4" />
+                    <Trash className="h-4 w-4" />
                 </Button>
-              </AlertDialogTrigger>
+                </AlertDialogTrigger>
               <AlertDialogContent>
                 <AlertDialogHeader>
                   <AlertDialogTitle>Confirm deletion</AlertDialogTitle>
