@@ -34,6 +34,7 @@ interface PurchaseItem {
   quantity: number;
   quantity_selled: number;
   unit_price: number;
+  unit_price_with_discount: number;
   sale_price: number;
   subtotal: number;
   sold_percentage: number;
@@ -47,6 +48,7 @@ interface SaleItemForm {
   purchase_item_id: number;
   quantity: number;
   unit_price: number;
+  unit_price_with_discount: number;
   sale_price: number;
   subtotal: number;
   product_name: string;
@@ -283,6 +285,7 @@ export default function SalesEditPage({ sale, investors, purchaseItems: initialP
         purchase_item_id: item.purchase_item_id,
         quantity: Number(item.quantity) || 0,
         unit_price: Number(item.unit_price) || 0,
+        unit_price_with_discount: Number(item.unit_price_with_discount) || 0,
         sale_price: Number(item.sale_price) || 0,
         subtotal: Number(item.subtotal) || 0,
       }))
@@ -311,6 +314,7 @@ export default function SalesEditPage({ sale, investors, purchaseItems: initialP
       purchase_item_id: purchaseItem.id,
       quantity: 1,
       unit_price: Number(purchaseItem.unit_price) || 0,
+      unit_price_with_discount: Number(purchaseItem.unit_price_with_discount) || 0,
       sale_price: Number(purchaseItem.sale_price) || 0,
       subtotal: Number(purchaseItem.sale_price) || 0,
       product_name: purchaseItem.product_name || "",
@@ -730,9 +734,13 @@ export default function SalesEditPage({ sale, investors, purchaseItems: initialP
                             <Input
                             readOnly
                             id={`price-${index}`}
-                            type="number"
-                            value={item.unit_price}
-                            className={"mt-1 bg-red-600 text-white dark:bg-red-800 dark:text-zinc-100 border-zinc-300 dark:border-zinc-600 "}
+                            type="text"
+                            value={
+                                item.unit_price_with_discount === item.unit_price
+                                ? item.unit_price
+                                : `${item.unit_price} / ${Number(item.unit_price_with_discount).toFixed(2)}`
+                            }
+                            className="mt-1 bg-red-600 text-white dark:bg-red-800 dark:text-zinc-100 border-zinc-300 dark:border-zinc-600"
                             />
                         </div>
 

@@ -323,6 +323,7 @@ class SaleController extends Controller
                 'purchase_item_id' => $item->purchase_item_id,
                 'quantity' => $item->quantity,
                 'unit_price' => $item->purchaseItem->unit_price ,
+                'unit_price_with_discount' => $item->purchaseItem->unit_price_with_discount ,
                 'sale_price' => $item->sale_price,
                 'subtotal' => $item->subtotal,
                 'product_name' => $item->purchaseItem->product_name ?? '',
