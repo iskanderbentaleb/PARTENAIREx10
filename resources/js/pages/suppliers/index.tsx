@@ -1,7 +1,7 @@
 import { DataTable } from '../components/data-table';
 import { type ColumnDef } from '@tanstack/react-table';
 import { Button } from "@/components/ui/button";
-import { Trash, Edit } from "lucide-react";
+import { Trash, Edit, Printer } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -121,12 +121,30 @@ export default function SuppliersPage({ suppliers, paginationLinks, totals }: an
           });
         };
 
+        const handlePrint = (supplierId: number) => {
+            window.open(`/suppliers/${supplierId}/print`, '_blank');
+        };
+
         return (
           <div className="flex justify-center items-center">
             <Button asChild variant="ghost" size="sm" className="mr-2">
               <Link href={`/suppliers/edit/${supplier.id}`}>
                 <Edit className="h-4 w-4" />
               </Link>
+            </Button>
+
+            {/* PDF Print Button */}
+            <Button
+                    variant="ghost"
+                    size="sm"
+                    className="flex items-center"
+                    onClick={() => handlePrint(supplier.id)}
+                >
+                    <Printer className="h-4 w-4" />
+            </Button>
+
+
+            <Button asChild variant="ghost" size="sm" className="mr-2">
             </Button>
 
             {hasPurchases ? (

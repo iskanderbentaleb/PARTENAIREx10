@@ -5,6 +5,7 @@ use App\Http\Controllers\InvestorTransactionController;
 use App\Http\Controllers\PurchaseController;
 use App\Http\Controllers\SaleController;
 use App\Http\Controllers\SupplierController;
+use App\Http\Controllers\SupplierReportController;
 use App\Http\Controllers\SupplierTransactionController;
 use App\Models\SupplierTransaction;
 use Illuminate\Support\Facades\Route;
@@ -29,6 +30,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('suppliers/edit/{id}', [SupplierController::class, 'edit'])->name('suppliers.edit');
     Route::put('suppliers/{id}', action: [SupplierController::class, 'update'])->name('suppliers.update');
     Route::get('suppliers/{supplier}/financial-data', [SupplierController::class, 'financialData']);
+    Route::get('suppliers/{supplier}/print', [SupplierController::class, 'print'])->name('suppliers.print');
 
     // investors routes
     Route::get('investors', [InvestorController::class, 'index'])->name('investors');

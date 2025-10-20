@@ -3,9 +3,12 @@
 namespace App\Http\Controllers;
 
 use App\Models\Supplier;
+use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Inertia\Inertia;
+use Barryvdh\DomPDF\Facade\Pdf;
+
 
 class SupplierController extends Controller
 {
@@ -133,6 +136,85 @@ class SupplierController extends Controller
     {
         abort_unless($supplier->user_id === Auth::id(), 403, 'Unauthorized access');
     }
+
+
+    public function print(string $id)
+    {
+        $supplier = Supplier::where('user_id', Auth::id())
+            ->with(['purchases.items', 'transactions.purchase', 'user'])
+            ->withSum('purchases', 'total')
+            ->withSum('transactions', 'amount')
+            ->findOrFail($id);
+
+        $admin = User::findOrFail(auth()->id());
+
+        // Calculate financial summary
+        $totalPurchases = $supplier->purchases_sum_total ?? 0;
+        $totalPayments = $supplier->transactions_sum_amount ?? 0;
+        $currentBalance = $totalPurchases - $totalPayments;
+
+        // Calculate additional totals (livraison is just shown, not added to sum)
+        $totalSubtotal = $supplier->purchases->sum('subtotal');
+        $totalDiscount = $supplier->purchases->sum('discount_value');
+        $totalShipping = $supplier->purchases->sum('shipping_value'); // Just for display
+
+        // Combine purchases and transactions and sort by date
+        $transactions = collect();
+
+        // Add purchases as transactions
+        foreach ($supplier->purchases as $purchase) {
+            $transactions->push([
+                'date' => $purchase->purchase_date,
+                'type' => 'purchase',
+                'invoice_number' => $purchase->supplier_invoice_number,
+                'subtotal' => $purchase->subtotal,
+                'discount' => $purchase->discount_value,
+                'shipping' => $purchase->shipping_value,
+                'total' => $purchase->total,
+                'currency' => $purchase->currency,
+                'note' => $purchase->note,
+                'amount' => $purchase->total,
+            ]);
+        }
+
+        // Add payment transactions (only non-zero amounts)
+        foreach ($supplier->transactions as $transaction) {
+            if ($transaction->amount != 0) {
+                $transactions->push([
+                    'date' => $transaction->date,
+                    'type' => 'payment',
+                    'invoice_number' => $transaction->purchase?->supplier_invoice_number,
+                    'amount' => $transaction->amount,
+                    'note' => $transaction->note,
+                    'total' => $transaction->amount,
+                ]);
+            }
+        }
+
+        // Sort by date
+        $transactions = $transactions->sortBy('date');
+
+        $html = view('pdf.supplier', compact(
+            'supplier',
+            'admin',
+            'totalPurchases',
+            'totalPayments',
+            'currentBalance',
+            'totalSubtotal',
+            'totalDiscount',
+            'totalShipping',
+            'transactions'
+        ))->render();
+
+        $pdf = Pdf::loadHTML($html)
+            ->setPaper('A4', 'landscape')
+            ->setOption('defaultFont', 'DejaVu Sans')
+            ->setOption('isHtml5ParserEnabled', true)
+            ->setOption('isRemoteEnabled', true);
+
+        return $pdf->stream("rapport-fournisseur-{$supplier->name}.pdf");
+    }
+
 
 
     public function financialData(Supplier $supplier)
