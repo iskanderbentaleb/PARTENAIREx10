@@ -8,6 +8,8 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Inertia\Inertia;
 use Barryvdh\DomPDF\Facade\Pdf;
+use App\Exports\SupplierReportExport;
+use Maatwebsite\Excel\Facades\Excel;
 
 
 class SupplierController extends Controller
@@ -138,7 +140,7 @@ class SupplierController extends Controller
     }
 
 
-    public function print(string $id)
+    public function print(string $id, Request $request)
     {
         $supplier = Supplier::where('user_id', Auth::id())
             ->with(['purchases.items', 'transactions.purchase', 'user'])
@@ -148,23 +150,50 @@ class SupplierController extends Controller
 
         $admin = User::findOrFail(auth()->id());
 
+        // Get and normalize date range from request
+        $startDate = $request->get('start_date');
+        $endDate = $request->get('end_date');
+
+        if ($startDate && $endDate) {
+            $startDate = \Carbon\Carbon::parse($startDate)->startOfDay();
+            $endDate = \Carbon\Carbon::parse($endDate)->endOfDay();
+        }
+
+        // Default collections
+        $filteredPurchases = $supplier->purchases;
+        $filteredTransactions = $supplier->transactions;
+
+        // Filter by date range (if provided)
+        if ($startDate && $endDate) {
+            $filteredPurchases = $supplier->purchases->filter(function ($purchase) use ($startDate, $endDate) {
+                $purchaseDate = \Carbon\Carbon::parse($purchase->purchase_date);
+                return $purchaseDate->betweenIncluded($startDate, $endDate);
+            });
+
+            $filteredTransactions = $supplier->transactions->filter(function ($transaction) use ($startDate, $endDate) {
+                $transactionDate = \Carbon\Carbon::parse($transaction->date);
+                return $transactionDate->betweenIncluded($startDate, $endDate);
+            });
+        }
+
         // Calculate financial summary
-        $totalPurchases = $supplier->purchases_sum_total ?? 0;
-        $totalPayments = $supplier->transactions_sum_amount ?? 0;
+        $totalPurchases = $filteredPurchases->sum('total');
+        $totalPayments = $filteredTransactions->sum('amount');
         $currentBalance = $totalPurchases - $totalPayments;
 
-        // Calculate additional totals (livraison is just shown, not added to sum)
-        $totalSubtotal = $supplier->purchases->sum('subtotal');
-        $totalDiscount = $supplier->purchases->sum('discount_value');
-        $totalShipping = $supplier->purchases->sum('shipping_value'); // Just for display
+        // Additional totals
+        $totalSubtotal = $filteredPurchases->sum('subtotal');
+        $totalDiscount = $filteredPurchases->sum('discount_value');
+        $totalShipping = $filteredPurchases->sum('shipping_value');
 
-        // Combine purchases and transactions and sort by date
+        // Build combined transactions list
         $transactions = collect();
 
-        // Add purchases as transactions
-        foreach ($supplier->purchases as $purchase) {
+        // Add purchases
+        foreach ($filteredPurchases as $purchase) {
+            $purchaseDate = \Carbon\Carbon::parse($purchase->purchase_date);
             $transactions->push([
-                'date' => $purchase->purchase_date,
+                'date' => $purchaseDate,
                 'type' => 'purchase',
                 'invoice_number' => $purchase->supplier_invoice_number,
                 'subtotal' => $purchase->subtotal,
@@ -174,26 +203,35 @@ class SupplierController extends Controller
                 'currency' => $purchase->currency,
                 'note' => $purchase->note,
                 'amount' => $purchase->total,
+                'sort_date' => $purchaseDate->format('Y-m-d H:i:s'),
+                'sort_priority' => 1,
             ]);
         }
 
-        // Add payment transactions (only non-zero amounts)
-        foreach ($supplier->transactions as $transaction) {
+        // Add transactions (payments)
+        foreach ($filteredTransactions as $transaction) {
             if ($transaction->amount != 0) {
+                $transactionDate = \Carbon\Carbon::parse($transaction->date);
                 $transactions->push([
-                    'date' => $transaction->date,
+                    'date' => $transactionDate,
                     'type' => 'payment',
                     'invoice_number' => $transaction->purchase?->supplier_invoice_number,
                     'amount' => $transaction->amount,
                     'note' => $transaction->note,
                     'total' => $transaction->amount,
+                    'sort_date' => $transactionDate->format('Y-m-d H:i:s'),
+                    'sort_priority' => 2,
                 ]);
             }
         }
 
-        // Sort by date
-        $transactions = $transactions->sortBy('date');
+        // Sort combined transactions
+        $transactions = $transactions->sortBy([
+            ['sort_date', 'asc'],
+            ['sort_priority', 'asc'],
+        ]);
 
+        // Generate PDF view
         $html = view('pdf.supplier', compact(
             'supplier',
             'admin',
@@ -203,7 +241,9 @@ class SupplierController extends Controller
             'totalSubtotal',
             'totalDiscount',
             'totalShipping',
-            'transactions'
+            'transactions',
+            'startDate',
+            'endDate'
         ))->render();
 
         $pdf = Pdf::loadHTML($html)
@@ -212,9 +252,27 @@ class SupplierController extends Controller
             ->setOption('isHtml5ParserEnabled', true)
             ->setOption('isRemoteEnabled', true);
 
-        return $pdf->stream("rapport-fournisseur-{$supplier->name}.pdf");
+        $dateSuffix = ($startDate && $endDate)
+            ? '_' . $startDate->format('Y-m-d') . '_to_' . $endDate->format('Y-m-d')
+            : '';
+
+        return $pdf->stream("rapport-fournisseur-{$supplier->name}{$dateSuffix}.pdf");
     }
 
+
+
+    public function export(string $id)
+    {
+        $supplier = Supplier::where('user_id', Auth::id())
+            ->with(['purchases', 'transactions.purchase'])
+            ->withSum('purchases', 'total')
+            ->withSum('transactions', 'amount')
+            ->findOrFail($id);
+
+        $fileName = "rapport-fournisseur-{$supplier->name}-" . now()->format('Y-m-d') . '.xlsx';
+
+        return Excel::download(new SupplierReportExport($supplier), $fileName);
+    }
 
 
     public function financialData(Supplier $supplier)

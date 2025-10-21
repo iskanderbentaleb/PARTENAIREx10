@@ -191,6 +191,12 @@
 
     <div class="document-title">Rapport Fournisseur - {{ $supplier->name }}</div>
 
+    @if($startDate && $endDate)
+        <div style="text-align: center; margin-bottom: 10px; font-size: 12px; color: #666;">
+            Période: {{ \Carbon\Carbon::parse($startDate)->format('d/m/Y') }} - {{ \Carbon\Carbon::parse($endDate)->format('d/m/Y') }}
+        </div>
+    @endif
+
     <div class="supplier-info">
       <div class="info-grid">
         <div class="info-item">
@@ -263,50 +269,46 @@
       <tbody>
         @foreach($transactions as $transaction)
         <tr class="type-{{ $transaction['type'] }}">
-          <td class="text-center">
-            @if(isset($transaction['date']))
-              {{ \Carbon\Carbon::parse($transaction['date'])->format('d/m/Y') }}
-            @else
-              -
-            @endif
-          </td>
-          <td class="text-center">
+        <td class="text-center">
+            {{ $transaction['date']->format('d/m/Y') }}
+        </td>
+        <td class="text-center">
             @if($transaction['type'] == 'purchase')
-              <strong>ACHAT</strong>
+            <strong>ACHAT</strong>
             @else
-              <strong class="positive">PAIEMENT</strong>
+            <strong class="positive">PAIEMENT</strong>
             @endif
-          </td>
-          <td>{{ $transaction['invoice_number'] ?? '-' }}</td>
-          <td class="text-right">
+        </td>
+        <td>{{ $transaction['invoice_number'] ?? '-' }}</td>
+        <td class="text-right">
             @if($transaction['type'] == 'purchase')
-              {{ number_format($transaction['subtotal'], 2, ',', ' ') }}
+            {{ number_format($transaction['subtotal'], 2, ',', ' ') }}
             @else
-              -
+            -
             @endif
-          </td>
-          <td class="text-right">
+        </td>
+        <td class="text-right">
             @if($transaction['type'] == 'purchase')
-              {{ number_format($transaction['discount'], 2, ',', ' ') }}
+            {{ number_format($transaction['discount'], 2, ',', ' ') }}
             @else
-              -
+            -
             @endif
-          </td>
-          <td class="text-right">
+        </td>
+        <td class="text-right">
             @if($transaction['type'] == 'purchase')
-              {{ number_format($transaction['shipping'], 2, ',', ' ') }}
+            {{ number_format($transaction['shipping'], 2, ',', ' ') }}
             @else
-              -
+            -
             @endif
-          </td>
-          <td class="text-right">
+        </td>
+        <td class="text-right">
             @if($transaction['type'] == 'purchase')
-              <strong>{{ number_format($transaction['total'], 2, ',', ' ') }} DZD</strong>
+            <strong>{{ number_format($transaction['total'], 2, ',', ' ') }} DZD</strong>
             @else
-              <strong class="positive">{{ number_format($transaction['amount'], 2, ',', ' ') }} DZD</strong>
+            <strong class="positive">{{ number_format($transaction['amount'], 2, ',', ' ') }} DZD</strong>
             @endif
-          </td>
-          <td class="notes-cell">{{ $transaction['note'] ?? '-' }}</td>
+        </td>
+        <td class="notes-cell">{{ $transaction['note'] ?? '-' }}</td>
         </tr>
         @endforeach
 

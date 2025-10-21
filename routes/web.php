@@ -31,6 +31,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::put('suppliers/{id}', action: [SupplierController::class, 'update'])->name('suppliers.update');
     Route::get('suppliers/{supplier}/financial-data', [SupplierController::class, 'financialData']);
     Route::get('suppliers/{supplier}/print', [SupplierController::class, 'print'])->name('suppliers.print');
+    Route::get('suppliers/{supplier}/export', [SupplierController::class, 'export'])->name('suppliers.export');
 
     // investors routes
     Route::get('investors', [InvestorController::class, 'index'])->name('investors');
