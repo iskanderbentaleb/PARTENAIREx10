@@ -40,7 +40,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::post('investors', [InvestorController::class, 'store'])->name('investors.store');
     Route::get('investors/edit/{id}', [InvestorController::class, 'edit'])->name('investors.edit');
     Route::put('investors/{id}', action: [InvestorController::class, 'update'])->name('investors.update');
-
+    Route::get('investors/{investor}/print', [InvestorController::class, 'print'])->name('investors.print');
+    Route::get('investors/{investor}/export', [InvestorController::class, 'export'])->name('investors.export');
 
     // purchases routes
     Route::get('purchases', [PurchaseController::class, 'index'])->name('purchases');

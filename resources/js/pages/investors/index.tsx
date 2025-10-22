@@ -1,7 +1,7 @@
 import { DataTable } from '../components/data-table';
 import { type ColumnDef } from '@tanstack/react-table';
 import { Button } from "@/components/ui/button";
-import { Trash, Edit, TrendingUp, TrendingDown, DollarSign } from "lucide-react";
+import { Trash, Edit, TrendingUp, TrendingDown, DollarSign, Printer, FileUp } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -240,6 +240,14 @@ export default function InvestorsPage({ investors, paginationLinks, totals }: In
           });
         };
 
+        const handlePrint = (investorId: number) => {
+            window.open(`/investors/${investorId}/print`, '_blank');
+        };
+
+        const handleExport = (investorId: number) => {
+            window.open(`/investors/${investorId}/export`, '_blank');
+        };
+
         return (
           <div className="flex justify-center items-center gap-1">
             <Button asChild variant="ghost" size="sm" className="h-8 w-8 p-0">
@@ -247,6 +255,30 @@ export default function InvestorsPage({ investors, paginationLinks, totals }: In
                 <Edit className="h-4 w-4" />
               </Link>
             </Button>
+
+            {/* Print Button */}
+                <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 w-8 p-0 "
+                    onClick={() => handlePrint(investor.id)}
+                    title="Print investor report"
+                >
+                    <Printer className="h-4 w-4" />
+                </Button>
+
+            {/* export button */}
+            <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 w-8 p-0 "
+                    onClick={() => handleExport(investor.id)}
+                    title="Print investor report"
+                >
+                    <FileUp className="h-4 w-4" />
+            </Button>
+
+
             <AlertDialog>
                 <AlertDialogTrigger asChild>
                 <Button

@@ -215,7 +215,6 @@ export default function SuppliersPage({ suppliers, paginationLinks, totals }: an
           });
         };
 
-        // Add this function inside your component
         const handleExport = (supplierId: number) => {
             window.open(`/suppliers/${supplierId}/export`, '_blank');
         };

@@ -248,7 +248,7 @@ class SupplierController extends Controller
 
         $pdf = Pdf::loadHTML($html)
             ->setPaper('A4', 'landscape')
-            ->setOption('defaultFont', 'DejaVu Sans')
+            ->setOption('defaultFont', 'Times New Roman')
             ->setOption('isHtml5ParserEnabled', true)
             ->setOption('isRemoteEnabled', true);
 

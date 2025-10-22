@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="fr">
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Rapport Fournisseur - {{ $supplier->name }}</title>
+  <title>Supplier Report - {{ $supplier->name }}</title>
   <style>
     @page {
       size: A4 landscape;
@@ -189,22 +189,22 @@
 <body>
   <div class="container">
 
-    <div class="document-title">Rapport Fournisseur - {{ $supplier->name }}</div>
+    <div class="document-title">Supplier Report - {{ $supplier->name }}</div>
 
     @if($startDate && $endDate)
         <div style="text-align: center; margin-bottom: 10px; font-size: 12px; color: #666;">
-            Période: {{ \Carbon\Carbon::parse($startDate)->format('d/m/Y') }} - {{ \Carbon\Carbon::parse($endDate)->format('d/m/Y') }}
+            Period: {{ \Carbon\Carbon::parse($startDate)->format('d/m/Y') }} - {{ \Carbon\Carbon::parse($endDate)->format('d/m/Y') }}
         </div>
     @endif
 
     <div class="supplier-info">
       <div class="info-grid">
         <div class="info-item">
-          <span class="info-label">Nom:</span>
+          <span class="info-label">Name:</span>
           <span>{{ $supplier->name }}</span>
         </div>
         <div class="info-item">
-          <span class="info-label">Téléphone:</span>
+          <span class="info-label">Phone:</span>
           <span>{{ $supplier->phone ?? 'N/A' }}</span>
         </div>
         <div class="info-item">
@@ -212,7 +212,7 @@
           <span>{{ $supplier->email ?? 'N/A' }}</span>
         </div>
         <div class="info-item">
-          <span class="info-label">Adresse:</span>
+          <span class="info-label">Address:</span>
           <span>{{ $supplier->address ?? 'N/A' }}</span>
         </div>
       </div>
@@ -227,23 +227,23 @@
     <!-- Summary Table -->
     <table class="summary-table">
       <tr>
-        <td class="summary-label">Total Achats:</td>
+        <td class="summary-label">Total Purchases:</td>
         <td class="summary-value">{{ number_format($totalPurchases, 2, ',', ' ') }} DZD</td>
       </tr>
       <tr>
-        <td class="summary-label">Total Remise:</td>
+        <td class="summary-label">Total Discount:</td>
         <td class="summary-value">{{ number_format($totalDiscount, 2, ',', ' ') }} DZD</td>
       </tr>
       <tr>
-        <td class="summary-label">Total Livraison:</td>
+        <td class="summary-label">Total Shipping:</td>
         <td class="summary-value">{{ number_format($totalShipping, 2, ',', ' ') }} DZD</td>
       </tr>
       <tr>
-        <td class="summary-label">Total Paiements:</td>
+        <td class="summary-label">Total Payments:</td>
         <td class="summary-value positive">{{ number_format($totalPayments, 2, ',', ' ') }} DZD</td>
       </tr>
       <tr>
-        <td class="summary-label">Solde Actuel:</td>
+        <td class="summary-label">Current Balance:</td>
         <td class="summary-value {{ $currentBalance >= 0 ? 'negative' : 'positive' }}">
           {{ number_format($currentBalance, 2, ',', ' ') }} DZD
         </td>
@@ -252,17 +252,17 @@
 
     <!-- Transactions Table -->
     @if($transactions->count() > 0)
-    <div class="section-header">Historique des Transactions ({{ $transactions->count() }})</div>
+    <div class="section-header">Transaction History ({{ $transactions->count() }})</div>
     <table class="data-table">
       <thead>
         <tr>
           <th>Date</th>
           <th>Type</th>
-          <th>Facture</th>
-          <th>Sous-total</th>
-          <th>Remise</th>
-          <th>Livraison</th>
-          <th>Montant</th>
+          <th>Invoice</th>
+          <th>Subtotal</th>
+          <th>Discount</th>
+          <th>Shipping</th>
+          <th>Amount</th>
           <th>Notes</th>
         </tr>
       </thead>
@@ -274,9 +274,9 @@
         </td>
         <td class="text-center">
             @if($transaction['type'] == 'purchase')
-            <strong>ACHAT</strong>
+            <strong>PURCHASE</strong>
             @else
-            <strong class="positive">PAIEMENT</strong>
+            <strong class="positive">PAYMENT</strong>
             @endif
         </td>
         <td>{{ $transaction['invoice_number'] ?? '-' }}</td>
@@ -314,7 +314,7 @@
 
         <!-- Purchase Totals Row -->
         <tr class="totals-row">
-          <td colspan="3" class="text-right"><strong>TOTAUX ACHATS:</strong></td>
+          <td colspan="3" class="text-right"><strong>PURCHASE TOTALS:</strong></td>
           <td class="text-right"><strong>{{ number_format($totalSubtotal, 2, ',', ' ') }}</strong></td>
           <td class="text-right"><strong>{{ number_format($totalDiscount, 2, ',', ' ') }}</strong></td>
           <td class="text-right"><strong>{{ number_format($totalShipping, 2, ',', ' ') }}</strong></td>
@@ -324,14 +324,14 @@
 
         <!-- Payments Total Row -->
         <tr class="totals-row">
-          <td colspan="6" class="text-right"><strong>TOTAL PAIEMENTS:</strong></td>
+          <td colspan="6" class="text-right"><strong>TOTAL PAYMENTS:</strong></td>
           <td class="text-right"><strong class="positive">{{ number_format($totalPayments, 2, ',', ' ') }} DZD</strong></td>
           <td></td>
         </tr>
 
         <!-- Grand Total Row -->
         <tr class="grand-total-row">
-          <td colspan="6" class="text-right"><strong>SOLDE FINAL:</strong></td>
+          <td colspan="6" class="text-right"><strong>FINAL BALANCE:</strong></td>
           <td class="text-right"><strong class="{{ $currentBalance >= 0 ? 'negative' : 'positive' }}">
             {{ number_format($currentBalance, 2, ',', ' ') }} DZD
           </strong></td>
@@ -340,11 +340,11 @@
       </tbody>
     </table>
     @else
-    <div class="section-header">Aucune transaction trouvée</div>
+    <div class="section-header">No transactions found</div>
     @endif
 
     <div class="footer">
-      Généré le {{ now()->format('d/m/Y H:i') }} par {{ $admin->name ?? 'Système' }} - &copy; {{ date('Y') }}
+      Generated on {{ now()->format('d/m/Y H:i') }} by {{ $admin->name ?? 'System' }} - &copy; {{ date('Y') }}
     </div>
 
   </div>

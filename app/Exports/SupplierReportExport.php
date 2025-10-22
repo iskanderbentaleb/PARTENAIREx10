@@ -36,11 +36,11 @@ class SupplierReportExport implements FromArray, WithHeadings, WithStyles, WithC
         $totalShipping = $this->supplier->purchases->sum('shipping_value');
 
         return [
-            array_merge(['RAPPORT FOURNISSEUR - SYNTHÈSE FINANCIÈRE'], array_fill(1, 10, '')),
+            array_merge(['SUPPLIER REPORT - FINANCIAL SUMMARY'], array_fill(1, 10, '')),
             [],
-            array_merge(['INFORMATIONS FOURNISSEUR'], array_fill(1, 10, '')),
+            array_merge(['SUPPLIER INFORMATION'], array_fill(1, 10, '')),
             [
-                'Nom', 'Email', 'Téléphone', 'Adresse', 'Notes',
+                'Name', 'Email', 'Phone', 'Address', 'Notes',
                 '', '', '', '', '', ''
             ],
             [
@@ -48,14 +48,14 @@ class SupplierReportExport implements FromArray, WithHeadings, WithStyles, WithC
                 $this->supplier->email ?? 'N/A',
                 $this->supplier->phone ?? 'N/A',
                 $this->supplier->address ?? 'N/A',
-                $this->supplier->notes ?? 'Aucune note',
+                $this->supplier->notes ?? 'No notes',
                 '', '', '', '', '', ''
             ],
             [],
-            array_merge(['RÉSUMÉ FINANCIER'], array_fill(1, 10, '')),
+            array_merge(['FINANCIAL SUMMARY'], array_fill(1, 10, '')),
             [
-                'Total Achats', 'Sous-total', 'Total Remise', 'Total Livraison',
-                'Total Paiements', 'Solde Actuel',
+                'Total Purchases', 'Subtotal', 'Total Discount', 'Total Shipping',
+                'Total Payments', 'Current Balance',
                 '', '', '', '', ''
             ],
             [
@@ -68,10 +68,10 @@ class SupplierReportExport implements FromArray, WithHeadings, WithStyles, WithC
                 '', '', '', '', ''
             ],
             [],
-            array_merge(['HISTORIQUE DES TRANSACTIONS'], array_fill(1, 10, '')),
+            array_merge(['TRANSACTION HISTORY'], array_fill(1, 10, '')),
             [
-                'Date', 'Type', 'Facture', 'Sous-total (DZD)', 'Remise (DZD)',
-                'Livraison (DZD)', 'Montant (DZD)', 'Notes'
+                'Date', 'Type', 'Invoice', 'Subtotal (DZD)', 'Discount (DZD)',
+                'Shipping (DZD)', 'Amount (DZD)', 'Notes'
             ],
         ];
     }
@@ -85,7 +85,7 @@ class SupplierReportExport implements FromArray, WithHeadings, WithStyles, WithC
             $purchaseDate = Carbon::parse($purchase->purchase_date);
             $transactions->push([
                 $purchaseDate->format('d/m/Y'),
-                'ACHAT',
+                'PURCHASE',
                 $purchase->supplier_invoice_number,
                 number_format($purchase->subtotal, 2),
                 number_format($purchase->discount_value, 2),
@@ -103,7 +103,7 @@ class SupplierReportExport implements FromArray, WithHeadings, WithStyles, WithC
                 $transactionDate = Carbon::parse($transaction->date);
                 $transactions->push([
                     $transactionDate->format('d/m/Y'),
-                    'PAIEMENT',
+                    'PAYMENT',
                     $transaction->purchase?->supplier_invoice_number ?? '-',
                     '-',
                     '-',
@@ -116,12 +116,12 @@ class SupplierReportExport implements FromArray, WithHeadings, WithStyles, WithC
             }
         }
 
-        // Sort by date and priority (purchases first, then payments on same date)
+        // Sort by date and priority (purchases first, then payments)
         return $transactions->sortBy([
             ['sort_date', 'asc'],
             ['sort_priority', 'asc']
         ])->map(function ($item) {
-            // Remove the sort keys from the final array
+            // Remove sorting keys from output
             return array_slice($item, 0, 8);
         })->values()->toArray();
     }
@@ -179,10 +179,10 @@ class SupplierReportExport implements FromArray, WithHeadings, WithStyles, WithC
             ],
         ];
 
-        // Style transaction rows with zebra striping and color coding
+        // Apply alternating background for transactions (purchases = blue, payments = green)
         for ($i = $transactionsStartRow; $i < $transactionsStartRow + $transactionsCount; $i++) {
             $transactionType = $sheet->getCell("B{$i}")->getValue();
-            $isPurchase = $transactionType === 'ACHAT';
+            $isPurchase = $transactionType === 'PURCHASE';
 
             $styles[$i] = [
                 'fill' => [
@@ -192,7 +192,6 @@ class SupplierReportExport implements FromArray, WithHeadings, WithStyles, WithC
                 'borders' => ['allBorders' => ['borderStyle' => Border::BORDER_THIN]],
             ];
 
-            // Style amount column based on type
             if ($isPurchase) {
                 $styles["G{$i}"] = [
                     'font' => ['bold' => true, 'color' => ['rgb' => '1F4E79']],
@@ -204,7 +203,7 @@ class SupplierReportExport implements FromArray, WithHeadings, WithStyles, WithC
             }
         }
 
-        // Style financial summary numbers
+        // Style summary section
         $styles["A9:F9"] = [
             'font' => ['bold' => true],
             'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER],
@@ -237,52 +236,51 @@ class SupplierReportExport implements FromArray, WithHeadings, WithStyles, WithC
                 $transactionsEndRow = $transactionsStartRow + $transactionsCount;
                 $lastColumn = 'H';
 
-                // Merge title cells
+                // Merge header cells
                 $sheet->mergeCells("A1:{$lastColumn}1");
                 $sheet->mergeCells("A3:{$lastColumn}3");
                 $sheet->mergeCells("A7:{$lastColumn}7");
                 $sheet->mergeCells("A11:{$lastColumn}11");
 
-                // Set row heights
+                // Adjust row heights
                 $sheet->getRowDimension(1)->setRowHeight(25);
                 $sheet->getRowDimension(3)->setRowHeight(20);
                 $sheet->getRowDimension(7)->setRowHeight(20);
                 $sheet->getRowDimension(11)->setRowHeight(20);
 
-                // Freeze panes at transactions start
+                // Freeze header
                 $sheet->freezePane("A{$transactionsStartRow}");
 
-                // Set number format for amount columns
+                // Format numbers
                 $sheet->getStyle("D{$transactionsStartRow}:G{$transactionsEndRow}")
                     ->getNumberFormat()
                     ->setFormatCode('#,##0.00');
 
-                // Add auto-filter to transactions
+                // Apply auto-filter
                 if ($transactionsCount > 0) {
                     $sheet->setAutoFilter("A12:{$lastColumn}12");
                 }
 
-                // Add totals row for transactions
+                // Add totals section
                 if ($transactionsCount > 0) {
                     $totalsRow = $transactionsEndRow + 1;
 
                     // Purchase totals
-                    $sheet->setCellValue("C{$totalsRow}", "TOTAUX ACHATS:");
+                    $sheet->setCellValue("C{$totalsRow}", "PURCHASE TOTALS:");
                     $sheet->setCellValue("D{$totalsRow}", number_format($this->supplier->purchases->sum('subtotal'), 2));
                     $sheet->setCellValue("E{$totalsRow}", number_format($this->supplier->purchases->sum('discount_value'), 2));
                     $sheet->setCellValue("F{$totalsRow}", number_format($this->supplier->purchases->sum('shipping_value'), 2));
                     $sheet->setCellValue("G{$totalsRow}", number_format($this->supplier->purchases_sum_total ?? 0, 2));
 
-                    // Style totals row
                     $sheet->getStyle("A{$totalsRow}:H{$totalsRow}")->applyFromArray([
                         'font' => ['bold' => true],
                         'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => 'FFF2CC']],
                         'borders' => ['allBorders' => ['borderStyle' => Border::BORDER_THIN]],
                     ]);
 
-                    // Payments total
+                    // Payment totals
                     $paymentsRow = $totalsRow + 1;
-                    $sheet->setCellValue("C{$paymentsRow}", "TOTAL PAIEMENTS:");
+                    $sheet->setCellValue("C{$paymentsRow}", "TOTAL PAYMENTS:");
                     $sheet->setCellValue("G{$paymentsRow}", number_format($this->supplier->transactions_sum_amount ?? 0, 2));
                     $sheet->getStyle("A{$paymentsRow}:H{$paymentsRow}")->applyFromArray([
                         'font' => ['bold' => true, 'color' => ['rgb' => '2D7D32']],
@@ -293,7 +291,7 @@ class SupplierReportExport implements FromArray, WithHeadings, WithStyles, WithC
                     // Final balance
                     $balanceRow = $paymentsRow + 1;
                     $currentBalance = ($this->supplier->purchases_sum_total ?? 0) - ($this->supplier->transactions_sum_amount ?? 0);
-                    $sheet->setCellValue("C{$balanceRow}", "SOLDE FINAL:");
+                    $sheet->setCellValue("C{$balanceRow}", "FINAL BALANCE:");
                     $sheet->setCellValue("G{$balanceRow}", number_format($currentBalance, 2));
                     $balanceColor = $currentBalance >= 0 ? 'FFCDD2' : 'C8E6C9';
                     $textColor = $currentBalance >= 0 ? 'C62828' : '2E7D32';
@@ -303,7 +301,7 @@ class SupplierReportExport implements FromArray, WithHeadings, WithStyles, WithC
                         'borders' => ['allBorders' => ['borderStyle' => Border::BORDER_MEDIUM]],
                     ]);
 
-                    // Add currency labels
+                    // Currency column
                     $sheet->setCellValue("H{$totalsRow}", "DZD");
                     $sheet->setCellValue("H{$paymentsRow}", "DZD");
                     $sheet->setCellValue("H{$balanceRow}", "DZD");
