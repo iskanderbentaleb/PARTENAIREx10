@@ -84,7 +84,6 @@ Unlike traditional ERP systems, PARTENAIREx10 is designed specifically for small
     ```
 
 5. **Database setup**
-    - Edit `database/seeders/UserSeeder.php` with your admin credentials
     - Run migrations and seeders:
       
       ```bash
@@ -97,7 +96,7 @@ Unlike traditional ERP systems, PARTENAIREx10 is designed specifically for small
     ```
 
 7. **Access the application**
-    - **Admin Panel:** [http://localhost:8000/admin/login](http://localhost:8000/admin/login)
+    - **Register page:** [http://localhost:8000/register](http://localhost:8000/register)
 
 ---
 
@@ -132,13 +131,14 @@ For inquiries or support, please contact:
 
 **PARTENAIREx10** - *Smart Business Management for Growing Enterprises*
 
-![Dashboard](./screenshots/dashboard.png)
-![Suppliers](./screenshots/suppliers.png)
-![Investors](./screenshots/investors.png)
-![Reports](./screenshots/reports.png)
-![Dark Mode](./screenshots/dark-mode.png)
-![Mobile View](./screenshots/mobile.png)
-![Excel Export](./screenshots/excel-export.png)
-![Financial Summary](./screenshots/financial-summary.png)
-![Transaction History](./screenshots/transactions.png)
-![Supplier Details](./screenshots/supplier-details.png)
+![1](./screenshots/1.png)
+![2](./screenshots/2.png)
+![3](./screenshots/3.png)
+![4](./screenshots/4.png)
+![5](./screenshots/5.png)
+![6](./screenshots/6.png)
+![7](./screenshots/7.png)
+![8](./screenshots/8.png)
+![9](./screenshots/9.png)
+![10](./screenshots/10.png)
+![11](./screenshots/11.png)
