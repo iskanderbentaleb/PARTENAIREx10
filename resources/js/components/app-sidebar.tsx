@@ -8,11 +8,11 @@ import {ArrowLeftRight , CircleDollarSign , Package , PersonStanding , LayoutGri
 import AppLogo from './app-logo';
 
 const mainNavItems: NavItem[] = [
-    {
-        title: 'Dashboard',
-        href: '/dashboard',
-        icon: LayoutGrid,
-    },
+    // {
+    //     title: 'Dashboard',
+    //     href: '/dashboard',
+    //     icon: LayoutGrid,
+    // },
     {
         title: 'Suppliers',
         href: '/suppliers',

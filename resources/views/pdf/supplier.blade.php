@@ -279,7 +279,7 @@
             <strong class="positive">PAYMENT</strong>
             @endif
         </td>
-        <td>{{ $transaction['invoice_number'] ?? '-' }}</td>
+        <td>{{ $transaction['invoice_number'] . "(" . $transaction['invoice_id'] . ")" }}</td>
         <td class="text-right">
             @if($transaction['type'] == 'purchase')
             {{ number_format($transaction['subtotal'], 2, ',', ' ') }}
