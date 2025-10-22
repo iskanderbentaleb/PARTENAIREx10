@@ -15,7 +15,6 @@ Unlike traditional ERP systems, PARTENAIREx10 is designed specifically for small
 - **Capital Overview:** Instantly view available cash, active investments, and product value still in process
 - **Smart Reconciliation:** Mark products as sold to automatically update supplier and investor balances
 - **Reports & Analytics:** Visualize performance and growth through interactive dashboards
-- **Multi-User Roles:** Manage admin, supplier, and investor access separately
 - **Dark/Light Mode:** Switch between modern light and dark themes
 - **Responsive Design:** Fully optimized for desktop, tablet, and mobile devices
 
